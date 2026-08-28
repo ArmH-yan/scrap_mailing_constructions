@@ -34,21 +34,18 @@ CREATE TABLE IF NOT EXISTS companies (
     has_active_projects BOOLEAN DEFAULT FALSE,
     project_count     INTEGER DEFAULT 0,
     project_names     TEXT,
-    lead_score        INTEGER DEFAULT 0,
-    lead_priority     VARCHAR(10) DEFAULT 'COLD',
-    company_intelligence TEXT,
-    synced_to_sheets  BOOLEAN DEFAULT FALSE,
+    email_status      VARCHAR(20) DEFAULT 'pending',
+    email_sent_at     TIMESTAMPTZ,
+    email_error       TEXT,
     first_seen        TIMESTAMPTZ DEFAULT NOW(),
     last_seen         TIMESTAMPTZ DEFAULT NOW(),
     created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE companies IS 'Companies with content-hash dedup and lead scoring.';
+COMMENT ON TABLE companies IS 'Companies with content-hash dedup and email tracking.';
 
 CREATE INDEX IF NOT EXISTS idx_companies_hash ON companies(content_hash);
-CREATE INDEX IF NOT EXISTS idx_companies_priority ON companies(lead_priority);
-CREATE INDEX IF NOT EXISTS idx_companies_score ON companies(lead_score);
-CREATE INDEX IF NOT EXISTS idx_companies_synced ON companies(synced_to_sheets);
+CREATE INDEX IF NOT EXISTS idx_companies_email_status ON companies(email_status);
 
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -86,19 +83,6 @@ CREATE TABLE IF NOT EXISTS crawl_runs (
 
 -- 2. Views ------------------------------------------------------------------
 
-CREATE OR REPLACE VIEW v_qualified_leads AS
-SELECT
-    c.*,
-    COUNT(DISTINCT p.id) AS detected_projects,
-    COUNT(DISTINCT ct.id) AS contact_count
-FROM companies c
-LEFT JOIN projects p ON c.id = p.company_id
-LEFT JOIN contacts ct ON c.id = ct.company_id
-WHERE c.lead_priority IN ('HOT', 'WARM')
-GROUP BY c.id
-ORDER BY c.lead_score DESC;
-
-
 CREATE OR REPLACE VIEW v_lead_summary AS
 SELECT
     COUNT(*) AS total_companies,
@@ -106,15 +90,7 @@ SELECT
     COUNT(*) FILTER (WHERE email IS NOT NULL AND email != '') AS with_email,
     COUNT(*) FILTER (WHERE phone IS NOT NULL AND phone != '') AS with_phone,
     COUNT(*) FILTER (WHERE has_active_projects = TRUE) AS with_projects,
-    COUNT(*) FILTER (WHERE lead_priority = 'HOT') AS hot_leads,
-    COUNT(*) FILTER (WHERE lead_priority = 'WARM') AS warm_leads,
-    COUNT(*) FILTER (WHERE lead_priority = 'COLD') AS cold_leads,
-    COUNT(*) FILTER (WHERE synced_to_sheets = TRUE) AS synced,
-    ROUND(AVG(lead_score), 1) AS avg_score
+    COUNT(*) FILTER (WHERE email_status = 'sent') AS emails_sent,
+    COUNT(*) FILTER (WHERE email_status = 'failed') AS emails_failed,
+    COUNT(*) FILTER (WHERE email_status = 'pending') AS emails_pending
 FROM companies;
-
-
-CREATE OR REPLACE VIEW v_unsynced AS
-SELECT * FROM companies
-WHERE synced_to_sheets = FALSE
-ORDER BY lead_score DESC;

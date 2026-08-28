@@ -59,11 +59,6 @@ SOURCES = {
         "type": "js",
         "letter_pagination": False,
     },
-    "defanse_housing": {
-        "base_url": "https://defansehousing.com",
-        "listing_pages": [],
-        "type": "targeted",
-    },
 }
 
 
@@ -713,18 +708,6 @@ def run_crawler(num_agents: int = MAX_WORKERS, sources: list[str] = None, max_pa
     log.info(f"  Sources: {', '.join(sources)}")
 
     all_companies = []
-
-    # Targeted scrapers (not run through run_source)
-    if "defanse_housing" in (sources or []):
-        from src.scrapers.defanse_housing import DefanseHousingScraper
-        log.info("  Source: defanse_housing (targeted)")
-        dh = DefanseHousingScraper()
-        dh_companies = dh.run()
-        for c in dh_companies:
-            buffer.add(c)
-        all_companies.extend(dh_companies)
-        log.info(f"    defanse_housing: {len(dh_companies)} companies")
-        sources = [s for s in sources if s != "defanse_housing"]
 
     for source_key in sources:
         if source_key not in SOURCES:

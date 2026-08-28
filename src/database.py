@@ -1,6 +1,6 @@
 """
 Lead Generation v2 — Database Module
-PostgreSQL (temp) + Google Sheets (warehouse)
+PostgreSQL storage for companies and contacts
 """
 
 import os
@@ -72,9 +72,7 @@ def init_schema():
         conn.execute(text("DROP TABLE IF EXISTS projects CASCADE"))
         conn.execute(text("DROP TABLE IF EXISTS companies CASCADE"))
         conn.execute(text("DROP TABLE IF EXISTS crawl_runs CASCADE"))
-        conn.execute(text("DROP VIEW IF EXISTS v_qualified_leads CASCADE"))
         conn.execute(text("DROP VIEW IF EXISTS v_lead_summary CASCADE"))
-        conn.execute(text("DROP VIEW IF EXISTS v_unsynced CASCADE"))
         conn.commit()
     run_sql_file(engine, f"{SQL_DIR}/01_schema.sql")
     log.info("  [OK] Schema initialized")
@@ -120,9 +118,6 @@ def upsert_company(engine, data: dict) -> int:
                     has_active_projects = :has_projects,
                     project_count = :project_count,
                     project_names = COALESCE(:project_names, project_names),
-                    lead_score = :score,
-                    lead_priority = :priority,
-                    company_intelligence = COALESCE(:intelligence, company_intelligence),
                     last_seen = NOW()
                 WHERE id = :id
             """), {
@@ -149,9 +144,6 @@ def upsert_company(engine, data: dict) -> int:
                 "has_projects": data.get("has_active_projects", False),
                 "project_count": data.get("project_count", 0),
                 "project_names": data.get("project_names"),
-                "score": data.get("lead_score", 0),
-                "priority": data.get("lead_priority", "COLD"),
-                "intelligence": data.get("company_intelligence"),
             })
             conn.commit()
             return company_id
@@ -163,16 +155,14 @@ def upsert_company(engine, data: dict) -> int:
                     contact_page_url, source_url, source_site,
                     director, founded_year, employee_count, ownership_type,
                     gps_lat, gps_lon, facebook_url, instagram_url, linkedin_url,
-                    has_active_projects, project_count, project_names,
-                    lead_score, lead_priority, company_intelligence
+                    has_active_projects, project_count, project_names
                 ) VALUES (
                     :hash, :name, :website, :phone, :email, :address, :city,
                     :district, :category, :description, :services,
                     :contact_url, :source, :source_site,
                     :director, :founded_year, :employee_count, :ownership_type,
                     :gps_lat, :gps_lon, :facebook_url, :instagram_url, :linkedin_url,
-                    :has_projects, :project_count, :project_names,
-                    :score, :priority, :intelligence
+                    :has_projects, :project_count, :project_names
                 ) RETURNING id
             """), {
                 "hash": content_hash,
@@ -201,9 +191,6 @@ def upsert_company(engine, data: dict) -> int:
                 "has_projects": data.get("has_active_projects", False),
                 "project_count": data.get("project_count", 0),
                 "project_names": data.get("project_names"),
-                "score": data.get("lead_score", 0),
-                "priority": data.get("lead_priority", "COLD"),
-                "intelligence": data.get("company_intelligence"),
             })
             conn.commit()
             return result.fetchone()[0]
@@ -233,41 +220,26 @@ def insert_named_contact(engine, company_id: int, name: str, title: str, source:
     insert_contact(engine, company_id, "named_contact", value, source)
 
 
-def get_unsynced_companies(engine) -> pd.DataFrame:
-    return pd.read_sql("SELECT * FROM v_unsynced", engine)
-
-
-def mark_synced(engine, company_ids: list[int]):
-    if not company_ids:
-        return
-    with engine.connect() as conn:
-        conn.execute(
-            text("UPDATE companies SET synced_to_sheets = TRUE WHERE id = ANY(:ids)"),
-            {"ids": company_ids}
-        )
-        conn.commit()
-
-
-def purge_synced(engine):
-    """Remove synced companies from temp table."""
-    with engine.connect() as conn:
-        result = conn.execute(
-            text("DELETE FROM companies WHERE synced_to_sheets = TRUE RETURNING id")
-        )
-        deleted = len(result.fetchall())
-        conn.commit()
-    return deleted
-
-
 def get_all_companies(engine) -> pd.DataFrame:
-    return pd.read_sql("SELECT * FROM companies ORDER BY lead_score DESC", engine)
+    return pd.read_sql("SELECT * FROM companies ORDER BY company_name", engine)
 
 
-def get_qualified_leads(engine) -> pd.DataFrame:
-    return pd.read_sql(
-        "SELECT * FROM companies WHERE lead_priority IN ('HOT', 'WARM') ORDER BY lead_score DESC",
-        engine
-    )
+def update_email_status(engine, company_id: int, status: str, error: str = None):
+    """Update email status for a company."""
+    with engine.connect() as conn:
+        if status == "sent":
+            conn.execute(text("""
+                UPDATE companies
+                SET email_status = :status, email_sent_at = NOW(), email_error = NULL
+                WHERE id = :id
+            """), {"id": company_id, "status": status})
+        else:
+            conn.execute(text("""
+                UPDATE companies
+                SET email_status = :status, email_error = :error
+                WHERE id = :id
+            """), {"id": company_id, "status": status, "error": error})
+        conn.commit()
 
 
 def get_summary(engine) -> dict:
@@ -275,6 +247,6 @@ def get_summary(engine) -> dict:
         row = conn.execute(text("SELECT * FROM v_lead_summary")).fetchone()
         if row:
             cols = ["total_companies", "with_website", "with_email", "with_phone",
-                     "with_projects", "hot_leads", "warm_leads", "cold_leads", "synced", "avg_score"]
+                     "with_projects", "emails_sent", "emails_failed", "emails_pending"]
             return dict(zip(cols, row))
         return {}

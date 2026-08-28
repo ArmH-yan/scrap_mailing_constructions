@@ -1,6 +1,6 @@
 """
 Lead Generation v2 — Main Pipeline
-Scrape → Score → Store → Sync to Sheets → Purge temp
+Scrape → Store → Export → Send Emails
 """
 
 import sys
@@ -29,11 +29,8 @@ load_dotenv(dotenv_path=ENV_PATH)
 
 # Config
 RUN_INTERVAL_HOURS = int(os.getenv("RUN_INTERVAL_HOURS", "6"))
-
-# Validate important env vars
-GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
-GOOGLE_CREDS_FILE = os.getenv("GOOGLE_CREDS_FILE")
-GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME")
+EMAIL_TEMPLATE_PATH = os.getenv("EMAIL_TEMPLATE_PATH", "templates/email_template.html")
+TEST_EMAIL = os.getenv("TEST_EMAIL", "")
 
 from src.log import setup_logging, get_logger
 
@@ -43,25 +40,20 @@ from src.database import (
     upsert_company,
     insert_project,
     insert_contact,
-    get_unsynced_companies,
-    mark_synced,
-    purge_synced,
     get_summary,
+    get_all_companies,
+    update_email_status,
 )
 
 from src.crawler import run_crawler, SOURCES
-from src.scoring import (
-    score_company,
-    generate_intelligence,
-    normalize_company,
-)
+from src.scoring import normalize_company
 
-from src.gsheets import sync_to_sheets
 from src.export import (
     export_all_companies,
-    export_qualified_leads,
     generate_summary_report,
 )
+
+from src.email_sender import send_email
 
 PAGE_LIMITS = {
     "construction_am": 38,
@@ -129,20 +121,6 @@ def _store_company(engine, company: dict):
     return company_id
 
 
-def _sync_batch(engine, log):
-    """Sync all unsynced companies from DB to Google Sheets."""
-    unsynced = get_unsynced_companies(engine)
-    if unsynced.empty:
-        return 0
-    unsynced_list = unsynced.to_dict("records")
-    synced_count = sync_to_sheets(unsynced_list)
-    if synced_count > 0:
-        ids = unsynced["id"].tolist()
-        mark_synced(engine, ids)
-        log.info(f"    Synced {len(ids)} companies to Google Sheets")
-    return synced_count
-
-
 def run_pipeline(sources: list[str] = None, config: dict = None):
     start = time.time()
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -154,13 +132,6 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
     log.info(f"  Run ID:   {run_id}")
     log.info(f"  Started:  {datetime.now(timezone.utc).isoformat()}")
     log.info("=" * 60)
-
-    if not GOOGLE_SHEET_ID:
-        log.warning("GOOGLE_SHEET_ID not found in .env")
-    if not GOOGLE_CREDS_FILE:
-        log.warning("GOOGLE_CREDS_FILE not found in .env")
-    if not GOOGLE_SHEET_NAME:
-        log.warning("GOOGLE_SHEET_NAME not found in .env")
 
     # Graceful shutdown handling
     interrupted = False
@@ -177,12 +148,12 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
     signal.signal(signal.SIGTERM, handle_interrupt)
 
     # Step 1: Init database
-    log.info("[1/4] Initializing database schema...")
+    log.info("[1/3] Initializing database schema...")
     engine = get_engine()
     init_schema()
 
-    # Step 2: Crawl + score + store per source (incremental)
-    log.info("[2/4] Crawling web sources...")
+    # Step 2: Crawl + store per source (incremental)
+    log.info("[2/3] Crawling web sources...")
     if sources is None:
         sources = list(SOURCES.keys())
 
@@ -194,28 +165,6 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
     from src.crawler import run_source, create_agents, BatchBuffer
 
     agents = create_agents(5)
-
-    # Handle defanse_housing separately (targeted scraper)
-    if "defanse_housing" in sources:
-        from src.scrapers.defanse_housing import DefanseHousingScraper
-        if interrupted:
-            log.warning("  Stopped before defanse_housing")
-        else:
-            log.info("  Source: defanse_housing (targeted)")
-            dh = DefanseHousingScraper()
-            dh_companies = dh.run()
-
-            # Score, store, sync
-            for c in dh_companies:
-                normalize_company(c)
-                score_company(c)
-                c["company_intelligence"] = generate_intelligence(c)
-                _store_company(engine, c)
-            _sync_batch(engine, log)
-
-            all_companies.extend(dh_companies)
-            log.info(f"    defanse_housing: {len(dh_companies)} companies saved")
-        sources = [s for s in sources if s != "defanse_housing"]
 
     # Process directory sources
     for source_key in sources:
@@ -229,55 +178,167 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
         max_pages = max_pages_per_source.get(source_key)
 
         def on_batch_flush(batch):
-            """Callback: score + store + sync every 100 profiles."""
+            """Callback: store every 100 profiles."""
             for c in batch:
                 normalize_company(c)
-                score_company(c)
-                c["company_intelligence"] = generate_intelligence(c)
                 _store_company(engine, c)
-            _sync_batch(engine, log)
 
         buffer = BatchBuffer(on_flush=on_batch_flush)
         companies = run_source(source_key, SOURCES[source_key], agents, buffer, max_pages=max_pages)
 
-        # Score remaining items in buffer
+        # Store remaining items in buffer
         remaining = buffer.buffer[:]
         buffer.buffer.clear()
         for c in remaining:
             normalize_company(c)
-            score_company(c)
-            c["company_intelligence"] = generate_intelligence(c)
             _store_company(engine, c)
-
-        # Final sync for this source
-        _sync_batch(engine, log)
 
         all_companies.extend(companies)
         all_companies.extend(remaining)
         log.info(f"  {source_key}: {len(companies) + len(remaining)} companies saved")
 
     # Export local files
-    log.info("[EXPORT] Generating exports...")
+    log.info("[3/3] Generating exports...")
     export_all_companies(all_companies, run_id)
-    export_qualified_leads(all_companies, run_id)
     generate_summary_report(all_companies, run_id)
 
     # Summary
     elapsed = round(time.time() - start, 2)
-    hot = sum(1 for c in all_companies if c.get("lead_priority") == "HOT")
-    warm = sum(1 for c in all_companies if c.get("lead_priority") == "WARM")
 
     log.info("=" * 60)
     log.info(f"  PIPELINE COMPLETE in {elapsed}s")
     log.info(f"  Run ID:          {run_id}")
     log.info(f"  Total companies: {len(all_companies)}")
-    log.info(f"  HOT leads:       {hot}")
-    log.info(f"  WARM leads:      {warm}")
     if interrupted:
         log.info(f"  (Interrupted — partial results saved)")
     log.info("=" * 60)
 
     return all_companies
+
+
+def run_email_send(dry_run: bool = False):
+    """Send emails to all companies with pending status."""
+    log = get_logger()
+
+    log.info("=" * 60)
+    log.info("  EMAIL SENDING")
+    log.info("=" * 60)
+
+    # Load template
+    template_path = BASE_DIR / EMAIL_TEMPLATE_PATH
+    if not template_path.exists():
+        log.error(f"  Template not found: {template_path}")
+        return
+
+    from jinja2 import Template
+    with open(template_path, "r", encoding="utf-8") as f:
+        template = Template(f.read())
+
+    # Get companies with email and pending status
+    engine = get_engine()
+    companies_df = get_all_companies(engine)
+    companies = companies_df.to_dict("records")
+
+    # Filter companies with email and pending status
+    eligible = [
+        c for c in companies
+        if c.get("email") and c.get("email_status") == "pending"
+    ]
+
+    log.info(f"  Found {len(eligible)} companies with pending emails")
+
+    if not eligible:
+        log.info("  No emails to send")
+        return
+
+    # Get sender config
+    from_name = os.getenv("SMTP_FROM_NAME", "")
+    from_email = os.getenv("SMTP_FROM_EMAIL", "")
+
+    if not from_name or not from_email:
+        log.error("  SMTP_FROM_NAME and SMTP_FROM_EMAIL must be set in .env")
+        return
+
+    sent_count = 0
+    failed_count = 0
+
+    for company in eligible:
+        company_name = company.get("company_name", "Valued Partner")
+        project_names = company.get("project_names", "")
+
+        # Render template
+        html_body = template.render(
+            company_name=company_name,
+            project_names=project_names,
+            sender_name=from_name,
+            sender_email=from_email,
+        )
+
+        subject = f"Safety Solutions for {company_name}"
+
+        if dry_run:
+            log.info(f"  [DRY RUN] Would send to: {company.get('email')}")
+            sent_count += 1
+        else:
+            success = send_email(
+                to_email=company.get("email"),
+                subject=subject,
+                html_body=html_body,
+            )
+            if success:
+                update_email_status(engine, company["id"], "sent")
+                sent_count += 1
+            else:
+                update_email_status(engine, company["id"], "failed", "SMTP send failed")
+                failed_count += 1
+
+    log.info("=" * 60)
+    log.info(f"  EMAIL COMPLETE")
+    log.info(f"  Sent: {sent_count}")
+    log.info(f"  Failed: {failed_count}")
+    log.info("=" * 60)
+
+
+def run_email_test():
+    """Send a test email to the configured test address."""
+    log = get_logger()
+
+    if not TEST_EMAIL:
+        log.error("  TEST_EMAIL not configured in .env")
+        return
+
+    log.info(f"  Sending test email to: {TEST_EMAIL}")
+
+    # Load template
+    template_path = BASE_DIR / EMAIL_TEMPLATE_PATH
+    if not template_path.exists():
+        log.error(f"  Template not found: {template_path}")
+        return
+
+    from jinja2 import Template
+    with open(template_path, "r", encoding="utf-8") as f:
+        template = Template(f.read())
+
+    from_name = os.getenv("SMTP_FROM_NAME", "")
+    from_email = os.getenv("SMTP_FROM_EMAIL", "")
+
+    html_body = template.render(
+        company_name="Test Company",
+        project_names="Test Project 1, Test Project 2",
+        sender_name=from_name,
+        sender_email=from_email,
+    )
+
+    success = send_email(
+        to_email=TEST_EMAIL,
+        subject="Test Email - Safety Solutions",
+        html_body=html_body,
+    )
+
+    if success:
+        log.info("  Test email sent successfully!")
+    else:
+        log.error("  Failed to send test email")
 
 
 def run_scheduled():
@@ -318,6 +379,18 @@ def main():
     if len(sys.argv) > 1:
         if sys.argv[1] == "--schedule":
             run_scheduled()
+            return
+
+        if sys.argv[1] == "--send":
+            run_email_send()
+            return
+
+        if sys.argv[1] == "--send-dry":
+            run_email_send(dry_run=True)
+            return
+
+        if sys.argv[1] == "--send-test":
+            run_email_test()
             return
 
         sources = sys.argv[1:]

@@ -17,7 +17,5 @@ requests
 beautifulsoup4
 playwright
 
-# Google Sheets
-gspread
-google-auth
-google-auth-oauthlib
+# Email
+jinja2
