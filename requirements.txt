@@ -17,5 +17,8 @@ requests
 beautifulsoup4
 playwright
 
+# DNS (email discovery)
+dnspython
+
 # Email
 jinja2

@@ -1,5 +1,5 @@
 """
-Lead Generation v2 — Database Module
+Lead Generation — Database Module
 PostgreSQL storage for companies and contacts
 """
 
@@ -66,10 +66,8 @@ def run_sql_file(engine, filepath: str):
 def init_schema():
     create_database_if_needed()
     engine = get_engine()
-    # Drop old tables to apply new schema
     with engine.connect() as conn:
         conn.execute(text("DROP TABLE IF EXISTS contacts CASCADE"))
-        conn.execute(text("DROP TABLE IF EXISTS projects CASCADE"))
         conn.execute(text("DROP TABLE IF EXISTS companies CASCADE"))
         conn.execute(text("DROP TABLE IF EXISTS crawl_runs CASCADE"))
         conn.execute(text("DROP VIEW IF EXISTS v_lead_summary CASCADE"))
@@ -96,113 +94,42 @@ def upsert_company(engine, data: dict) -> int:
             company_id = existing[0]
             conn.execute(text("""
                 UPDATE companies SET
-                    website = COALESCE(:website, website),
-                    phone = COALESCE(:phone, phone),
-                    email = COALESCE(:email, email),
-                    address = COALESCE(:address, address),
-                    city = COALESCE(:city, city),
-                    district = COALESCE(:district, district),
-                    company_category = COALESCE(:category, company_category),
-                    company_description = COALESCE(:description, company_description),
-                    services = COALESCE(:services, services),
-                    contact_page_url = COALESCE(:contact_url, contact_page_url),
-                    director = COALESCE(:director, director),
-                    founded_year = COALESCE(:founded_year, founded_year),
-                    employee_count = COALESCE(:employee_count, employee_count),
-                    ownership_type = COALESCE(:ownership_type, ownership_type),
-                    gps_lat = COALESCE(:gps_lat, gps_lat),
-                    gps_lon = COALESCE(:gps_lon, gps_lon),
-                    facebook_url = COALESCE(:facebook_url, facebook_url),
-                    instagram_url = COALESCE(:instagram_url, instagram_url),
-                    linkedin_url = COALESCE(:linkedin_url, linkedin_url),
-                    has_active_projects = :has_projects,
-                    project_count = :project_count,
-                    project_names = COALESCE(:project_names, project_names),
+                    email = COALESCE(NULLIF(:email, ''), email),
+                    phone = COALESCE(NULLIF(:phone, ''), phone),
+                    director = COALESCE(NULLIF(:director, ''), director),
+                    city = COALESCE(NULLIF(:city, ''), city),
                     last_seen = NOW()
                 WHERE id = :id
             """), {
                 "id": company_id,
-                "website": data.get("website"),
-                "phone": data.get("phone"),
                 "email": data.get("email"),
-                "address": data.get("address"),
-                "city": data.get("city"),
-                "district": data.get("district"),
-                "category": data.get("company_category"),
-                "description": data.get("company_description"),
-                "services": data.get("services"),
-                "contact_url": data.get("contact_page_url"),
+                "phone": data.get("phone"),
                 "director": data.get("director"),
-                "founded_year": data.get("founded_year"),
-                "employee_count": data.get("employee_count"),
-                "ownership_type": data.get("ownership_type"),
-                "gps_lat": data.get("gps_lat"),
-                "gps_lon": data.get("gps_lon"),
-                "facebook_url": data.get("facebook_url"),
-                "instagram_url": data.get("instagram_url"),
-                "linkedin_url": data.get("linkedin_url"),
-                "has_projects": data.get("has_active_projects", False),
-                "project_count": data.get("project_count", 0),
-                "project_names": data.get("project_names"),
+                "city": data.get("city"),
             })
             conn.commit()
             return company_id
         else:
             result = conn.execute(text("""
                 INSERT INTO companies (
-                    content_hash, company_name, website, phone, email, address, city,
-                    district, company_category, company_description, services,
-                    contact_page_url, source_url, source_site,
-                    director, founded_year, employee_count, ownership_type,
-                    gps_lat, gps_lon, facebook_url, instagram_url, linkedin_url,
-                    has_active_projects, project_count, project_names
+                    content_hash, company_name, email, source_url, phone,
+                    director, city, source_site
                 ) VALUES (
-                    :hash, :name, :website, :phone, :email, :address, :city,
-                    :district, :category, :description, :services,
-                    :contact_url, :source, :source_site,
-                    :director, :founded_year, :employee_count, :ownership_type,
-                    :gps_lat, :gps_lon, :facebook_url, :instagram_url, :linkedin_url,
-                    :has_projects, :project_count, :project_names
+                    :hash, :name, :email, :source, :phone,
+                    :director, :city, :source_site
                 ) RETURNING id
             """), {
                 "hash": content_hash,
                 "name": data["company_name"],
-                "website": data.get("website"),
-                "phone": data.get("phone"),
                 "email": data.get("email"),
-                "address": data.get("address"),
-                "city": data.get("city"),
-                "district": data.get("district"),
-                "category": data.get("company_category"),
-                "description": data.get("company_description"),
-                "services": data.get("services"),
-                "contact_url": data.get("contact_page_url"),
                 "source": data.get("source_url", ""),
-                "source_site": data.get("source_site", ""),
+                "phone": data.get("phone"),
                 "director": data.get("director"),
-                "founded_year": data.get("founded_year"),
-                "employee_count": data.get("employee_count"),
-                "ownership_type": data.get("ownership_type"),
-                "gps_lat": data.get("gps_lat"),
-                "gps_lon": data.get("gps_lon"),
-                "facebook_url": data.get("facebook_url"),
-                "instagram_url": data.get("instagram_url"),
-                "linkedin_url": data.get("linkedin_url"),
-                "has_projects": data.get("has_active_projects", False),
-                "project_count": data.get("project_count", 0),
-                "project_names": data.get("project_names"),
+                "city": data.get("city"),
+                "source_site": data.get("source_site", ""),
             })
             conn.commit()
             return result.fetchone()[0]
-
-
-def insert_project(engine, company_id: int, name: str, url: str = None, source: str = None):
-    with engine.connect() as conn:
-        conn.execute(text("""
-            INSERT INTO projects (company_id, project_name, project_url, source_url)
-            VALUES (:company_id, :name, :url, :source)
-        """), {"company_id": company_id, "name": name, "url": url, "source": source})
-        conn.commit()
 
 
 def insert_contact(engine, company_id: int, contact_type: str, value: str, source: str = None):
@@ -212,12 +139,6 @@ def insert_contact(engine, company_id: int, contact_type: str, value: str, sourc
             VALUES (:company_id, :type, :value, :source)
         """), {"company_id": company_id, "type": contact_type, "value": value, "source": source})
         conn.commit()
-
-
-def insert_named_contact(engine, company_id: int, name: str, title: str, source: str = None):
-    """Insert a named individual contact (e.g. an architect) linked to a company."""
-    value = f"{name} ({title})" if title else name
-    insert_contact(engine, company_id, "named_contact", value, source)
 
 
 def get_all_companies(engine) -> pd.DataFrame:
@@ -246,7 +167,7 @@ def get_summary(engine) -> dict:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT * FROM v_lead_summary")).fetchone()
         if row:
-            cols = ["total_companies", "with_website", "with_email", "with_phone",
-                     "with_projects", "emails_sent", "emails_failed", "emails_pending"]
+            cols = ["total_companies", "with_email", "with_phone",
+                     "emails_sent", "emails_failed", "emails_pending"]
             return dict(zip(cols, row))
         return {}

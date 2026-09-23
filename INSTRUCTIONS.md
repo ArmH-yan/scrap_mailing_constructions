@@ -48,8 +48,8 @@ Edit `.env` with your settings:
 ```bash
 # PostgreSQL (default works with Docker)
 DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=leadgen
+DB_PORT=5433
+DB_NAME=developers
 DB_USER=postgres
 DB_PASS=postgres
 
@@ -216,7 +216,7 @@ Edit `templates/email_template.html`. Available variables:
 |----------|---------|-------------|
 | `DB_HOST` | localhost | PostgreSQL host |
 | `DB_PORT` | 5432 | PostgreSQL port |
-| `DB_NAME` | leadgen | Database name |
+| `DB_NAME` | developers | Database name |
 | `DB_USER` | postgres | Database user |
 | `DB_PASS` | postgres | Database password |
 | `SCRAPE_DELAY` | 0.5 | Delay between requests (seconds) |

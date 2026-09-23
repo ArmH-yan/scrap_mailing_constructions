@@ -1,12 +1,11 @@
 """
-Lead Generation Scraper — Export
-CSV and XLSX export for leads.
+Lead Generation — Export
+CSV export for leads.
 """
 
 import os
 import csv
 import logging
-import pandas as pd
 from datetime import datetime, timezone
 
 log = logging.getLogger("leadgen")
@@ -26,13 +25,8 @@ def export_all_companies(companies: list[dict], timestamp: str = None) -> str:
 
     filepath = os.path.join(EXPORT_DIR, f"companies_{timestamp}.csv")
     columns = [
-        "company_name", "website", "phone", "email", "address", "city",
-        "district", "director", "founded_year", "employee_count", "ownership_type",
-        "gps_lat", "gps_lon",
-        "facebook_url", "instagram_url", "linkedin_url",
-        "company_category", "company_description", "services",
-        "contact_page_url", "source_url", "has_active_projects",
-        "project_count", "project_names", "email_status", "source_site"
+        "company_name", "email", "source_url", "phone",
+        "director", "city", "source_site", "email_status",
     ]
 
     _write_csv(filepath, companies, columns)
@@ -52,10 +46,8 @@ def generate_summary_report(companies: list[dict], timestamp: str = None) -> str
 
     report_path = os.path.join(EXPORT_DIR, f"summary_report_{timestamp}.txt")
 
-    with_website = sum(1 for c in companies if c.get("website"))
     with_email = sum(1 for c in companies if c.get("email"))
     with_phone = sum(1 for c in companies if c.get("phone"))
-    with_projects = sum(1 for c in companies if c.get("has_active_projects"))
     emails_sent = sum(1 for c in companies if c.get("email_status") == "sent")
     emails_failed = sum(1 for c in companies if c.get("email_status") == "failed")
     emails_pending = sum(1 for c in companies if c.get("email_status") == "pending")
@@ -69,10 +61,8 @@ Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
 OVERVIEW
 --------
 Total companies found:      {total}
-Companies with website:     {with_website} ({with_website/total*100:.1f}%)
 Companies with email:       {with_email} ({with_email/total*100:.1f}%)
 Companies with phone:       {with_phone} ({with_phone/total*100:.1f}%)
-Companies with projects:    {with_projects} ({with_projects/total*100:.1f}%)
 
 EMAIL STATUS
 ------------

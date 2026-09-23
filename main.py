@@ -1,5 +1,5 @@
 """
-Lead Generation v2 — Main Pipeline
+Lead Generation — Main Pipeline
 Scrape → Store → Export → Send Emails
 """
 
@@ -38,15 +38,13 @@ from src.database import (
     get_engine,
     init_schema,
     upsert_company,
-    insert_project,
     insert_contact,
     get_summary,
     get_all_companies,
     update_email_status,
 )
 
-from src.crawler import run_crawler, SOURCES
-from src.scoring import normalize_company
+from src.crawler import run_source, SOURCES, create_agents, BatchBuffer, normalize_company
 
 from src.export import (
     export_all_companies,
@@ -58,6 +56,8 @@ from src.email_sender import send_email
 PAGE_LIMITS = {
     "construction_am": 38,
     "spyur_am": 20,
+    "norakaruyc_am": 1,
+    "myhome_am": 5,
 }
 
 
@@ -89,33 +89,14 @@ def _store_company(engine, company: dict):
     """Store a single company and its contacts in the database."""
     company_id = upsert_company(engine, company)
 
-    project_names = company.get("project_names", "")
-    if project_names:
-        for name in project_names.split(", "):
-            if name.strip():
-                insert_project(
-                    engine,
-                    company_id,
-                    name.strip(),
-                    source=company.get("source_url"),
-                )
-
     if company.get("phone"):
         insert_contact(
-            engine,
-            company_id,
-            "phone",
-            company["phone"],
-            company.get("source_url"),
+            engine, company_id, "phone", company["phone"], company.get("source_url"),
         )
 
     if company.get("email"):
         insert_contact(
-            engine,
-            company_id,
-            "email",
-            company["email"],
-            company.get("source_url"),
+            engine, company_id, "email", company["email"], company.get("source_url"),
         )
 
     return company_id
@@ -128,7 +109,7 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
     log = setup_logging(run_id)
 
     log.info("=" * 60)
-    log.info("  LEAD GENERATION PIPELINE v2")
+    log.info("  LEAD GENERATION PIPELINE")
     log.info(f"  Run ID:   {run_id}")
     log.info(f"  Started:  {datetime.now(timezone.utc).isoformat()}")
     log.info("=" * 60)
@@ -158,15 +139,10 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
         sources = list(SOURCES.keys())
 
     max_pages_per_source = config or {}
-
     all_companies = []
-
-    # Process each source individually for incremental save
-    from src.crawler import run_source, create_agents, BatchBuffer
 
     agents = create_agents(5)
 
-    # Process directory sources
     for source_key in sources:
         if interrupted:
             log.warning(f"  Stopped before {source_key}")
@@ -178,7 +154,7 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
         max_pages = max_pages_per_source.get(source_key)
 
         def on_batch_flush(batch):
-            """Callback: store every 100 profiles."""
+            """Callback: store every batch."""
             for c in batch:
                 normalize_company(c)
                 _store_company(engine, c)
@@ -264,12 +240,10 @@ def run_email_send(dry_run: bool = False):
 
     for company in eligible:
         company_name = company.get("company_name", "Valued Partner")
-        project_names = company.get("project_names", "")
 
         # Render template
         html_body = template.render(
             company_name=company_name,
-            project_names=project_names,
             sender_name=from_name,
             sender_email=from_email,
         )
@@ -324,7 +298,6 @@ def run_email_test():
 
     html_body = template.render(
         company_name="Test Company",
-        project_names="Test Project 1, Test Project 2",
         sender_name=from_name,
         sender_email=from_email,
     )
