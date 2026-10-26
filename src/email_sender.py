@@ -4,6 +4,7 @@ Gmail SMTP email sending with HTML templates.
 """
 
 import os
+import time
 import smtplib
 import logging
 from email.mime.text import MIMEText
@@ -24,6 +25,8 @@ SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
+SEND_DELAY_SECONDS = float(os.getenv("SEND_DELAY_SECONDS", "20"))
+DAILY_SEND_LIMIT = int(os.getenv("DAILY_SEND_LIMIT", "400"))
 
 
 def get_smtp_connection():
@@ -42,77 +45,76 @@ def get_smtp_connection():
         return None
 
 
-def send_email(to_email: str, subject: str, html_body: str, to_name: str = None) -> bool:
-    """Send a single HTML email."""
-    if not to_email:
-        log.warning("  No recipient email provided")
-        return False
-
-    server = get_smtp_connection()
-    if not server:
-        return False
-
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
-        msg["To"] = to_email
-        msg["Subject"] = subject
-
-        # Add HTML body
-        html_part = MIMEText(html_body, "html", "utf-8")
-        msg.attach(html_part)
-
-        # Send
-        server.sendmail(SMTP_FROM_EMAIL, to_email, msg.as_string())
-        log.info(f"  [OK] Email sent to {to_email}")
-        return True
-
-    except Exception as e:
-        log.error(f"  [FAIL] Failed to send to {to_email}: {e}")
-        return False
-
-    finally:
-        try:
-            server.quit()
-        except:
-            pass
+def _build_message(to_email: str, subject: str, html_body: str) -> str:
+    msg = MIMEMultipart("alternative")
+    msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    return msg.as_string()
 
 
-def send_batch_email(recipients: list[dict], subject: str, html_body: str) -> dict:
-    """Send the same email to multiple recipients. Returns stats."""
-    stats = {"sent": 0, "failed": 0, "skipped": 0}
+class EmailSender:
+    """One SMTP connection for many sends, with a delay between messages.
 
-    server = get_smtp_connection()
-    if not server:
-        stats["skipped"] = len(recipients)
-        return stats
+    Usage:
+        with EmailSender() as sender:
+            sender.send(to, subject, html)
+    """
 
-    for recipient in recipients:
-        to_email = recipient.get("email")
+    def __init__(self, delay: float = SEND_DELAY_SECONDS):
+        self.delay = delay
+        self.server = None
+        self._last_send = 0.0
+
+    def __enter__(self):
+        self.server = get_smtp_connection()
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self):
+        if self.server:
+            try:
+                self.server.quit()
+            except Exception:
+                pass
+            self.server = None
+
+    def send(self, to_email: str, subject: str, html_body: str) -> bool:
         if not to_email:
-            stats["skipped"] += 1
-            continue
+            log.warning("  No recipient email provided")
+            return False
 
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
-            msg["To"] = to_email
-            msg["Subject"] = subject
+        wait = self.delay - (time.monotonic() - self._last_send)
+        if wait > 0:
+            time.sleep(wait)
 
-            html_part = MIMEText(html_body, "html", "utf-8")
-            msg.attach(html_part)
+        message = _build_message(to_email, subject, html_body)
+        for attempt in range(2):
+            if self.server is None:
+                self.server = get_smtp_connection()
+                if self.server is None:
+                    return False
+            try:
+                self.server.sendmail(SMTP_FROM_EMAIL, to_email, message)
+                self._last_send = time.monotonic()
+                log.info(f"  [OK] Email sent to {to_email}")
+                return True
+            except smtplib.SMTPServerDisconnected:
+                # Connection dropped — reconnect once and retry
+                self.server = None
+            except Exception as e:
+                self._last_send = time.monotonic()
+                log.error(f"  [FAIL] Failed to send to {to_email}: {e}")
+                return False
 
-            server.sendmail(SMTP_FROM_EMAIL, to_email, msg.as_string())
-            stats["sent"] += 1
-            log.info(f"  [OK] Email sent to {to_email}")
+        log.error(f"  [FAIL] Failed to send to {to_email}: connection lost")
+        return False
 
-        except Exception as e:
-            stats["failed"] += 1
-            log.error(f"  [FAIL] Failed to send to {to_email}: {e}")
 
-    try:
-        server.quit()
-    except:
-        pass
-
-    return stats
+def send_email(to_email: str, subject: str, html_body: str, to_name: str = None) -> bool:
+    """Send a single HTML email (opens and closes its own connection)."""
+    with EmailSender(delay=0) as sender:
+        return sender.send(to_email, subject, html_body)

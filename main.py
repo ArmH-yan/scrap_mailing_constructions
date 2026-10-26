@@ -51,7 +51,7 @@ from src.export import (
     generate_summary_report,
 )
 
-from src.email_sender import send_email
+from src.email_sender import send_email, EmailSender, DAILY_SEND_LIMIT
 
 PAGE_LIMITS = {
     "construction_am": 38,
@@ -169,9 +169,9 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
             normalize_company(c)
             _store_company(engine, c)
 
+        # run_source already returns every company, including those left in the buffer
         all_companies.extend(companies)
-        all_companies.extend(remaining)
-        log.info(f"  {source_key}: {len(companies) + len(remaining)} companies saved")
+        log.info(f"  {source_key}: {len(companies)} companies saved")
 
     # Export local files
     log.info("[3/3] Generating exports...")
@@ -222,6 +222,9 @@ def run_email_send(dry_run: bool = False):
     ]
 
     log.info(f"  Found {len(eligible)} companies with pending emails")
+    if len(eligible) > DAILY_SEND_LIMIT:
+        log.info(f"  Capping this run at DAILY_SEND_LIMIT={DAILY_SEND_LIMIT}")
+        eligible = eligible[:DAILY_SEND_LIMIT]
 
     if not eligible:
         log.info("  No emails to send")
@@ -238,33 +241,38 @@ def run_email_send(dry_run: bool = False):
     sent_count = 0
     failed_count = 0
 
-    for company in eligible:
-        company_name = company.get("company_name", "Valued Partner")
+    sender = EmailSender() if not dry_run else None
+    if sender and sender.__enter__().server is None:
+        log.error("  Could not connect to SMTP — aborting")
+        return
 
-        # Render template
-        html_body = template.render(
-            company_name=company_name,
-            sender_name=from_name,
-            sender_email=from_email,
-        )
+    try:
+        for company in eligible:
+            company_name = company.get("company_name", "Valued Partner")
 
-        subject = f"Safety Solutions for {company_name}"
-
-        if dry_run:
-            log.info(f"  [DRY RUN] Would send to: {company.get('email')}")
-            sent_count += 1
-        else:
-            success = send_email(
-                to_email=company.get("email"),
-                subject=subject,
-                html_body=html_body,
+            # Render template
+            html_body = template.render(
+                company_name=company_name,
+                sender_name=from_name,
+                sender_email=from_email,
             )
-            if success:
+
+            subject = f"Safety Solutions for {company_name}"
+
+            if dry_run:
+                log.info(f"  [DRY RUN] Would send to: {company.get('email')}")
+                sent_count += 1
+                continue
+
+            if sender.send(company.get("email"), subject, html_body):
                 update_email_status(engine, company["id"], "sent")
                 sent_count += 1
             else:
                 update_email_status(engine, company["id"], "failed", "SMTP send failed")
                 failed_count += 1
+    finally:
+        if sender:
+            sender.close()
 
     log.info("=" * 60)
     log.info(f"  EMAIL COMPLETE")

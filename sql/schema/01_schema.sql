@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS companies (
     phone             VARCHAR(200),
     director          VARCHAR(500),
     city              VARCHAR(255),
+    website           VARCHAR(500),
     source_site       VARCHAR(100),
     email_status      VARCHAR(20) DEFAULT 'pending',
     email_sent_at     TIMESTAMPTZ,
@@ -25,6 +26,9 @@ CREATE TABLE IF NOT EXISTS companies (
 );
 
 COMMENT ON TABLE companies IS 'Companies with content-hash dedup and email tracking.';
+
+-- Upgrade older databases created before the website column existed
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS website VARCHAR(500);
 
 CREATE INDEX IF NOT EXISTS idx_companies_hash ON companies(content_hash);
 CREATE INDEX IF NOT EXISTS idx_companies_email_status ON companies(email_status);
@@ -38,6 +42,16 @@ CREATE TABLE IF NOT EXISTS contacts (
     is_primary    BOOLEAN DEFAULT FALSE,
     source_url    VARCHAR(500)
 );
+
+-- Remove duplicates left by older runs, then enforce uniqueness
+DELETE FROM contacts a USING contacts b
+WHERE a.id > b.id
+  AND a.company_id = b.company_id
+  AND a.contact_type = b.contact_type
+  AND a.contact_value = b.contact_value;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_value
+    ON contacts(company_id, contact_type, contact_value);
 
 
 CREATE TABLE IF NOT EXISTS crawl_runs (
@@ -54,9 +68,12 @@ CREATE TABLE IF NOT EXISTS crawl_runs (
 
 -- 2. Views ------------------------------------------------------------------
 
-CREATE OR REPLACE VIEW v_lead_summary AS
+-- Dropped first: CREATE OR REPLACE can't reorder columns
+DROP VIEW IF EXISTS v_lead_summary;
+CREATE VIEW v_lead_summary AS
 SELECT
     COUNT(*) AS total_companies,
+    COUNT(*) FILTER (WHERE website IS NOT NULL AND website != '') AS with_website,
     COUNT(*) FILTER (WHERE email IS NOT NULL AND email != '') AS with_email,
     COUNT(*) FILTER (WHERE phone IS NOT NULL AND phone != '') AS with_phone,
     COUNT(*) FILTER (WHERE email_status = 'sent') AS emails_sent,

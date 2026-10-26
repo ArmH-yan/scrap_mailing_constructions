@@ -6,7 +6,6 @@ Multi-source parallel scraper: Playwright (JS) + BS4 (static)
 import time
 import random
 import re
-import hashlib
 import logging
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -105,11 +104,6 @@ def normalize_company(company: dict) -> dict:
 
 
 # === Core infrastructure ===
-
-def compute_content_hash(name: str, phone: str, url: str) -> str:
-    raw = f"{name}|{phone}|{url}".encode("utf-8")
-    return hashlib.sha1(raw).hexdigest()
-
 
 class ScrapingAgent:
     def __init__(self, agent_id: int):
@@ -316,6 +310,21 @@ def parse_construction_am_profile(html: str, url: str) -> dict:
         span = director_icon.find_next_sibling("span")
         if span:
             data["director"] = span.get_text(strip=True)
+
+    # Website — from external .button links
+    skip_domains = ["construction.am", "facebook", "instagram", "yandex", "mail.ru",
+                    "rambler", "google", "liveinternet", "linkedin"]
+    for a in soup.find_all("a", href=True, class_="button"):
+        href = a["href"]
+        if href.startswith("http") and not any(d in href for d in skip_domains):
+            data["website"] = href
+            break
+    if not data.get("website"):
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.startswith("http") and not any(d in href for d in skip_domains):
+                data["website"] = href
+                break
 
     # City
     address_icon = soup.find("i", class_=lambda c: c and "fa-map-signs" in c)
@@ -550,6 +559,11 @@ def _parse_myhome_am_detail(detail: dict, base_url: str) -> dict:
     email = detail.get("email", "")
     if email:
         data["email"] = email
+
+    # Website
+    website = detail.get("webSite", "")
+    if website:
+        data["website"] = website
 
     # Phone
     phone = detail.get("builderMobilePhoneNumber", "") or detail.get("phoneNumber", "")
