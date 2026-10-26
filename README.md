@@ -1,170 +1,62 @@
-# Lead Generation Pipeline v2
+# Lead Generation Pipeline
 
-Web scraper for finding Armenian construction companies. Collects leads and sends them personalized emails about safety services.
-
-## Services Offered
+Finds Armenian construction companies, collects their contact details, and runs
+an email outreach campaign for **The Nest** (thenest.am) safety services:
 
 - Dust-Proof Mesh Installation
 - Installation of Metal Structures
 - Safety Net System Installation
 
-## What it does
+## Features
 
-1. **Scrapes** company data from Armenian business directories
-2. **Stores** everything in PostgreSQL
-3. **Exports** CSV/TXT files locally
-4. **Sends** personalized emails via Gmail SMTP
+- **Scraping** from four Armenian directories (construction.am, spyur.am, norakaruyc.am, myhome.am)
+- **Website email finder** that visits company websites to fill in missing emails, including
+  Cloudflare-protected addresses and JavaScript sites (rendered with Playwright)
+- **PostgreSQL storage** that keeps data between runs and merges the same company found on
+  several sites into one record
+- **Email sending** through Zoho Mail over one connection, with a delay between emails and a daily cap
+- **Tracking:** per-company link clicks, replies, bounces and unsubscribes, plus a funnel report
+- **Exports** to CSV and a text summary for each run
 
-Extracts: name, phone, email, full address, city, district, director, founded year, employee count, ownership type, GPS coordinates, social media links, services, and project information.
-
-## Architecture
+## How it works
 
 ```
-Web sources → Crawler (BS4 + Playwright) → PostgreSQL → Exports
-                                                          ↓
-                                                   Email Sending
+Directories ──► Crawler ──► PostgreSQL ◄── Website email finder
+                               │
+                               ├──► CSV / summary exports
+                               │
+                               └──► Email sending (Zoho SMTP)
+                                        │
+                     clicks ◄── tracker/app.py      inbox.py ──► replies / bounces
 ```
 
-## Setup
+## Project structure
 
-### 1. Virtual Env
-
-```bash
-python -m venv venv
-.\venv\Scripts\activate
-python.exe -m pip install --upgrade pip
+```
+main.py                 CLI: scrape, send, check inbox, stats
+from_website_email.py   Find missing emails on company websites
+src/
+  crawler.py            Directory scrapers and normalization
+  website_emails.py     Website email extraction and ranking
+  database.py           PostgreSQL access
+  email_sender.py       SMTP sending and tracked links
+  inbox.py              IMAP reply and bounce checker
+  export.py             CSV and summary exports
+  log.py                Logging to data/logs/
+tracker/app.py          Click redirect and unsubscribe server (Flask)
+sql/schema/             Database schema (safe to re-run, upgrades in place)
+templates/              Email templates (Jinja2)
 ```
 
-### 2. Install dependencies
+## Getting started
+
+Setup, configuration, commands and developer notes are in **[INSTRUCTIONS.md](INSTRUCTIONS.md)**.
+
+Short version:
 
 ```bash
 pip install -r requirements.txt
-python -m playwright install chromium --with-deps
-```
-
-### 3. Configure
-
-```bash
-cp .env.example .env
-# Edit .env with your database and SMTP credentials
-```
-
-### 4. Docker (PostgreSQL)
-
-```bash
+cp .env.example .env    # then fill in your settings
 docker-compose up -d
-```
-
-### 5. Gmail SMTP Setup
-
-1. Go to https://myaccount.google.com/security
-2. Enable 2-Step Verification
-3. Go to "App passwords"
-4. Create app password for "Mail"
-5. Add to `.env`:
-   ```
-   SMTP_USER=your_email@gmail.com
-   SMTP_PASS=your_16_char_app_password
-   ```
-
-## Usage
-
-### Scrape Companies
-
-```bash
-# All sources
 python main.py
-
-# Single source
-python main.py construction_am
-python main.py spyur_am
-
-# Multiple sources
-python main.py construction_am spyur_am
-
-# Scheduled runs (every 6 hours)
-python main.py --schedule
 ```
-
-### Send Emails
-
-```bash
-# Test email first
-python main.py --send-test
-
-# Preview emails (dry run)
-python main.py --send-dry
-
-# Send to all pending
-python main.py --send
-```
-
-### Track Results
-
-```bash
-# Record replies, bounces and "unsubscribe" replies from the Zoho inbox
-python main.py --check-inbox
-
-# Funnel: sent / clicked / replied / bounced / unsubscribed
-python main.py --stats
-
-# Click + unsubscribe link server (deploy on e.g. go.thenest.am, then set TRACK_BASE_URL)
-python -m tracker.app
-```
-
-Each company has its own `tracking_token`. With `TRACK_BASE_URL` set, the template gets:
-
-| Variable | Use |
-|----------|-----|
-| `{{ website_url }}` | Website button: logs the click, then redirects to `WEBSITE_URL?utm_source=email&c=<token>` |
-| `{{ unsubscribe_url }}` | Unsubscribe link (also sent as a `List-Unsubscribe` header) |
-
-Wrap the button in `{% if website_url %}…{% endif %}` so it stays hidden until the site is live.
-
-## Sources
-
-| Source | Type | Companies | Notes |
-|--------|------|-----------|-------|
-| construction.am | Static/BS4 | ~556 | Armenian letter pagination (38 letters) |
-| spyur.am | Static/BS4 | ~400 | Page pagination, 20 per page |
-
-## Data Collected
-
-| Field | Description |
-|-------|-------------|
-| company_name | Original name from source |
-| phone | Primary phone number |
-| email | Business email |
-| address | Full location address |
-| city | Extracted city name |
-| district | Administrative district |
-| director | Company director/owner name |
-| founded_year | Year founded |
-| employee_count | Employee range |
-| ownership_type | Private/state/etc |
-| gps_lat, gps_lon | Map coordinates |
-| facebook_url, instagram_url, linkedin_url | Social media |
-| services | Company services/role description |
-| project_count, project_names | Detected projects |
-| email_status | pending/sent/failed |
-
-## Exports
-
-- `data/exports/companies_*.csv` - All companies
-- `data/exports/summary_report_*.txt` - Quick stats
-
-## Logs
-
-Every run creates a log file in `data/logs/run_*.log` with timestamps.
-
-## Notes
-
-- construction.am uses Armenian letter pagination (38 letters) to find company profiles
-- spyur.am uses page-based pagination (20 companies per page)
-- Emails on construction.am are hidden in popover button attributes
-- The pipeline deduplicates companies using a SHA-1 hash of (name + phone + source_url)
-- All HTTP errors are caught and logged — the pipeline never crashes on a 403/timeout
-
-## Documentation
-
-See [INSTRUCTIONS.md](INSTRUCTIONS.md) for detailed setup and developer documentation.

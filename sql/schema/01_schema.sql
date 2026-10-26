@@ -39,6 +39,25 @@ ALTER TABLE companies ADD COLUMN IF NOT EXISTS clicked_at       TIMESTAMPTZ;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS replied_at       TIMESTAMPTZ;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS unsubscribed_at  TIMESTAMPTZ;
 
+-- Website email finder (from_website_email.py)
+--   website_status: found | no_email | dead | blocked
+--   email_source:   directory (scraped listing) | website (found on their site)
+--   email_guess:    unverified info@domain — never used for sending automatically
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS website_status     VARCHAR(20);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS website_checked_at TIMESTAMPTZ;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS email_source       VARCHAR(20);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS email_guess        VARCHAR(255);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS social_url         VARCHAR(500);
+
+-- Emails saved before email_source existed came from the directories
+UPDATE companies SET email_source = 'directory'
+WHERE COALESCE(email, '') <> '' AND email_source IS NULL;
+
+-- Social profiles were saved as websites by older runs: move them to social_url
+UPDATE companies
+SET social_url = COALESCE(social_url, website), website = NULL
+WHERE website ~* '^(https?://)?([a-z0-9-]+\.)*(facebook\.com|fb\.com|instagram\.com|youtube\.com|youtu\.be|linkedin\.com|t\.me|vk\.com|ok\.ru|tiktok\.com|twitter\.com|x\.com)([/?#]|$)';
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_companies_token ON companies(tracking_token);
 CREATE INDEX IF NOT EXISTS idx_companies_message_id ON companies(email_message_id);
 

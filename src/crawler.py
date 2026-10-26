@@ -12,6 +12,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 import requests
 
+from src.website_emails import check_website, extract_emails, pick_best, is_social_url
+
 log = logging.getLogger("leadgen")
 
 try:
@@ -99,6 +101,10 @@ def normalize_email(email: str) -> str:
 def normalize_company(company: dict) -> dict:
     company["phone"] = normalize_phone(company.get("phone", ""))
     company["email"] = normalize_email(company.get("email", ""))
+    website = (company.get("website") or "").strip()
+    if website and is_social_url(website):
+        company.setdefault("social_url", website)
+        company["website"] = ""
     company.pop("_all_text", None)
     return company
 
@@ -156,103 +162,6 @@ class BatchBuffer:
 
 def create_agents(count: int) -> list[ScrapingAgent]:
     return [ScrapingAgent(i) for i in range(count)]
-
-
-# === Email extraction helpers ===
-
-def _decode_obfuscated_email(text: str) -> list[str]:
-    """Decode common email obfuscation techniques and extract emails."""
-    emails = []
-    if not text:
-        return emails
-    decoded = text
-    decoded = re.sub(r"&#64;", "@", decoded)
-    decoded = re.sub(r"&#46;", ".", decoded)
-    decoded = re.sub(r"&#0*64;", "@", decoded)
-    decoded = re.sub(r"&#0*46;", ".", decoded)
-    decoded = re.sub(r"\s*\[at\]\s*", "@", decoded, flags=re.IGNORECASE)
-    decoded = re.sub(r"\s*\(at\)\s*", "@", decoded, flags=re.IGNORECASE)
-    decoded = re.sub(r"\s*\[dot\]\s*", ".", decoded, flags=re.IGNORECASE)
-    decoded = re.sub(r"\s*\(dot\)\s*", ".", decoded, flags=re.IGNORECASE)
-    decoded = re.sub(r"\s+at\s+(?=\w+\.)", "@", decoded, flags=re.IGNORECASE)
-    decoded = re.sub(r"\s+dot\s+(?=\w{2,}$)", ".", decoded, flags=re.IGNORECASE)
-    found = re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', decoded)
-    emails.extend(found)
-    return emails
-
-
-def _extract_emails_from_scripts(soup: BeautifulSoup) -> list[str]:
-    """Extract emails from script tags and JSON-LD structured data."""
-    emails = []
-    for script in soup.find_all("script", type="application/ld+json"):
-        try:
-            content = script.string or ""
-            found = re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', content)
-            emails.extend(found)
-        except Exception:
-            pass
-    for meta in soup.find_all("meta"):
-        name = (meta.get("name") or "").lower()
-        prop = (meta.get("property") or "").lower()
-        content = meta.get("content", "")
-        if any(k in name for k in ["email", "contact"]) or any(k in prop for k in ["email", "contact"]):
-            found = re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', content)
-            emails.extend(found)
-    for script in soup.find_all("script"):
-        if script.string:
-            found = re.findall(
-                r'(?:email|e_mail|mail|contact|from)\s*[:=]\s*["\']([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})["\']',
-                script.string, re.IGNORECASE,
-            )
-            emails.extend(found)
-    return emails
-
-
-def _discover_email_from_domain(domain: str) -> str | None:
-    """Try common email prefixes for a domain via DNS MX check."""
-    try:
-        import dns.resolver
-    except ImportError:
-        return None
-    try:
-        mx_records = dns.resolver.resolve(domain, "MX")
-        if not mx_records:
-            return None
-    except Exception:
-        return None
-    prefixes = ["info", "contact", "admin", "office", "hello", "mail", "support"]
-    for prefix in prefixes:
-        email = f"{prefix}@{domain}"
-        if re.match(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$', email):
-            return email
-    return None
-
-
-def _extract_emails_from_html(html: str, soup: BeautifulSoup) -> set:
-    """Extract all emails from HTML using multiple methods."""
-    emails = set()
-    # mailto links
-    for a in soup.find_all("a", href=True):
-        if a["href"].startswith("mailto:"):
-            email = a["href"].replace("mailto:", "").split("?")[0].strip()
-            if email and re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", email):
-                emails.add(email)
-    # obfuscated
-    for email in _decode_obfuscated_email(html):
-        clean = email.strip(".").lower()
-        if len(clean) > 5 and not clean.endswith((".png", ".jpg", ".gif", ".js", ".css", ".svg")):
-            emails.add(clean)
-    # scripts/meta
-    for email in _extract_emails_from_scripts(soup):
-        clean = email.strip(".").lower()
-        if len(clean) > 5:
-            emails.add(clean)
-    # plain regex
-    for e in re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', html):
-        clean = e.strip(".").lower()
-        if len(clean) > 5 and not clean.endswith((".png", ".jpg", ".gif", ".js", ".css", ".svg")):
-            emails.add(clean)
-    return emails
 
 
 # === construction.am parsers ===
@@ -320,9 +229,12 @@ def parse_construction_am_profile(html: str, url: str) -> dict:
             data["website"] = href
             break
     if not data.get("website"):
+        # Only links whose visible text is a web address — the first external link
+        # on the page is often an ad or partner banner
         for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if href.startswith("http") and not any(d in href for d in skip_domains):
+            href, label = a["href"], a.get_text(strip=True).lower()
+            if (href.startswith("http") and not any(d in href for d in skip_domains)
+                    and re.match(r"^(https?://)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+/?$", label)):
                 data["website"] = href
                 break
 
@@ -520,9 +432,9 @@ def parse_myhome_am_profile(html: str, url: str) -> dict:
 
     # Also check for emails in page text
     if not data.get("email"):
-        emails = _extract_emails_from_html(html, soup)
+        emails = pick_best(extract_emails(html, soup), "")
         if emails:
-            data["email"] = next(iter(emails))
+            data["email"] = emails[0]
 
     # Director / contact person
     for el in soup.select("[class*='director'], [class*='contact'], [class*='manager']"):
@@ -600,42 +512,6 @@ def _parse_myhome_am_detail(detail: dict, base_url: str) -> dict:
 
 # === Website enrichment ===
 
-def crawl_company_website(agent: ScrapingAgent, website_url: str) -> dict:
-    result = {"all_text": [], "emails": set(), "phones": set()}
-    paths = [
-        "/", "/about", "/about-us", "/contacts",
-        "/contact", "/contact-us", "/support",
-        "/feedback", "/team", "/info", "/projects",
-    ]
-    for path in paths:
-        url = urljoin(website_url, path)
-        html = agent.fetch(url, retries=1)
-        if html:
-            soup = BeautifulSoup(html, "html.parser")
-            # Extract emails
-            emails = _extract_emails_from_html(html, soup)
-            result["emails"].update(emails)
-            # Extract phones
-            for a in soup.find_all("a", href=True):
-                if a["href"].startswith("tel:"):
-                    phone = a["href"].replace("tel:", "").strip()
-                    if phone and len(phone) > 5:
-                        result["phones"].add(phone)
-            # Capture page text
-            for elem in soup(["script", "style"]):
-                elem.decompose()
-            text = soup.get_text(separator=" ", strip=True)[:2000]
-            result["all_text"].append(text)
-        time.sleep(0.2)
-
-    result["full_text"] = " ".join(result["all_text"])
-    if result["emails"]:
-        result["email"] = next(iter(result["emails"]))
-    if result["phones"]:
-        result["phone"] = next(iter(result["phones"]))
-    return result
-
-
 def _fetch_profile(args: tuple) -> dict | None:
     link, agent, parser = args
     html = agent.fetch(link["url"])
@@ -648,33 +524,25 @@ def _fetch_profile(args: tuple) -> dict | None:
 
 
 def _enrich_company(args: tuple) -> dict:
+    """Fill a missing email/phone from the company's own website (HTTP only, no guessing)."""
     company, agent = args
     website = company.get("website")
-    if website:
-        if not website.startswith(("http://", "https://")):
-            website = "https://" + website
-            company["website"] = website
-        web_data = crawl_company_website(agent, website)
-        if web_data.get("full_text"):
-            company["_all_text"] = web_data["full_text"]
-        if not company.get("email") and web_data.get("email"):
-            company["email"] = web_data["email"]
-        if not company.get("phone") and web_data.get("phone"):
-            company["phone"] = web_data["phone"]
+    if not website or is_social_url(website) or (company.get("email") and company.get("phone")):
+        return company
 
-    # DNS MX discovery if still no email
-    if not company.get("email") and website:
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(website if website.startswith("http") else "https://" + website)
-            domain = parsed.hostname
-            if domain:
-                discovered = _discover_email_from_domain(domain)
-                if discovered:
-                    company["email"] = discovered
-        except Exception:
-            pass
+    try:
+        result = check_website(website, session=agent.session)
+    except Exception as e:
+        log.debug(f"    Website check failed for {website}: {e}")
+        return company
 
+    if result.final_url:
+        company["website"] = result.final_url
+    if not company.get("email") and result.email:
+        company["email"] = result.email
+        company["email_source"] = "website"
+    if not company.get("phone") and result.phones:
+        company["phone"] = next(iter(result.phones))
     return company
 
 
@@ -859,19 +727,16 @@ def run_source(source_key: str, source_config: dict, agents: list[ScrapingAgent]
             if i % 20 == 0 or i == len(futures):
                 log.info(f"      Profiles: {i}/{len(futures)}")
 
-    # Add to batch buffer BEFORE enrichment
-    flushed = 0
-    for company in companies:
-        batch = buffer.add(company)
-        if batch:
-            flushed += len(batch)
-
-    # Enrich (visits company websites for emails/phones)
+    # Enrich (visits company websites for emails/phones) before storing,
+    # so batches flushed to the DB already carry what was found
     if companies:
         enrich_args = [(company, agents[i % len(agents)]) for i, company in enumerate(companies)]
         with ThreadPoolExecutor(max_workers=min(len(agents), len(companies))) as executor:
             futures = [executor.submit(_enrich_company, args) for args in enrich_args]
             companies = [f.result() for f in as_completed(futures)]
+
+    for company in companies:
+        buffer.add(company)
 
     return companies
 

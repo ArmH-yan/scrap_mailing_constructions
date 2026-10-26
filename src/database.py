@@ -137,16 +137,21 @@ def upsert_company(engine, data: dict) -> int:
             company_id = existing[0]
             conn.execute(text("""
                 UPDATE companies SET
+                    email_source = CASE WHEN COALESCE(email, '') = '' AND COALESCE(:email, '') <> ''
+                                        THEN :email_source ELSE email_source END,
                     email = COALESCE(NULLIF(:email, ''), email),
                     phone = COALESCE(NULLIF(:phone, ''), phone),
                     director = COALESCE(NULLIF(:director, ''), director),
                     city = COALESCE(NULLIF(:city, ''), city),
                     website = COALESCE(NULLIF(:website, ''), website),
+                    social_url = COALESCE(NULLIF(:social_url, ''), social_url),
                     last_seen = NOW()
                 WHERE id = :id
             """), {
                 "id": company_id,
                 "email": data.get("email"),
+                "email_source": data.get("email_source", "directory"),
+                "social_url": data.get("social_url"),
                 "phone": data.get("phone"),
                 "director": data.get("director"),
                 "city": data.get("city"),
@@ -157,11 +162,11 @@ def upsert_company(engine, data: dict) -> int:
         else:
             result = conn.execute(text("""
                 INSERT INTO companies (
-                    content_hash, company_name, email, source_url, phone,
-                    director, city, website, source_site
+                    content_hash, company_name, email, email_source, source_url, phone,
+                    director, city, website, social_url, source_site
                 ) VALUES (
-                    :hash, :name, :email, :source, :phone,
-                    :director, :city, :website, :source_site
+                    :hash, :name, :email, :email_source, :source, :phone,
+                    :director, :city, :website, :social_url, :source_site
                 ) RETURNING id
             """), {
                 "hash": content_hash,
@@ -172,6 +177,8 @@ def upsert_company(engine, data: dict) -> int:
                 "director": data.get("director"),
                 "city": data.get("city"),
                 "website": data.get("website"),
+                "social_url": data.get("social_url"),
+                "email_source": data.get("email_source", "directory") if data.get("email") else None,
                 "source_site": data.get("source_site", ""),
             })
             conn.commit()
@@ -192,23 +199,43 @@ def get_all_companies(engine) -> pd.DataFrame:
     return pd.read_sql("SELECT * FROM companies ORDER BY company_name", engine)
 
 
-def get_companies_without_email(engine) -> pd.DataFrame:
-    """Get companies that have a website but no email."""
-    return pd.read_sql("""
+def get_companies_without_email(engine, recheck_days: int = 30,
+                                include_dead: bool = False) -> pd.DataFrame:
+    """Companies with a website but no email, not checked in the last recheck_days.
+
+    Sites found dead or blocked are skipped unless include_dead is set.
+    """
+    return pd.read_sql(text("""
         SELECT * FROM companies
         WHERE website IS NOT NULL AND website != ''
           AND (email IS NULL OR email = '')
+          AND (website_checked_at IS NULL
+               OR website_checked_at < NOW() - make_interval(days => :days))
+          AND (:include_dead OR COALESCE(website_status, '') NOT IN ('dead', 'blocked'))
         ORDER BY company_name
-    """, engine)
+    """), engine, params={"days": recheck_days, "include_dead": include_dead})
 
 
-def update_company_email(engine, company_id: int, email: str):
-    """Update the email for a company."""
+def save_website_check(engine, company_id: int, status: str, email: str = "",
+                       all_emails: list[str] = (), guess: str = "", page_url: str = ""):
+    """Store the result of a website email check; every found email also goes to contacts."""
     with engine.connect() as conn:
         conn.execute(text("""
-            UPDATE companies SET email = :email, last_seen = NOW()
+            UPDATE companies SET
+                website_status = :status,
+                website_checked_at = NOW(),
+                email_source = CASE WHEN COALESCE(email, '') = '' AND :email <> ''
+                                    THEN 'website' ELSE email_source END,
+                email = COALESCE(NULLIF(email, ''), NULLIF(:email, '')),
+                email_guess = NULLIF(:guess, '')
             WHERE id = :id
-        """), {"id": company_id, "email": email})
+        """), {"id": company_id, "status": status, "email": email or "", "guess": guess or ""})
+        for value in list(all_emails)[:10]:   # best 10 — big corporate sites list dozens
+            conn.execute(text("""
+                INSERT INTO contacts (company_id, contact_type, contact_value, source_url)
+                VALUES (:id, 'email', :value, :source)
+                ON CONFLICT (company_id, contact_type, contact_value) DO NOTHING
+            """), {"id": company_id, "value": value, "source": page_url})
         conn.commit()
 
 
