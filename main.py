@@ -51,7 +51,7 @@ from src.export import (
     generate_summary_report,
 )
 
-from src.email_sender import send_email, EmailSender, DAILY_SEND_LIMIT
+from src.email_sender import send_email, EmailSender, DAILY_SEND_LIMIT, tracking_links
 
 PAGE_LIMITS = {
     "construction_am": 38,
@@ -250,22 +250,28 @@ def run_email_send(dry_run: bool = False):
         for company in eligible:
             company_name = company.get("company_name", "Valued Partner")
 
+            links = tracking_links(company.get("tracking_token"))
+
             # Render template
             html_body = template.render(
                 company_name=company_name,
                 sender_name=from_name,
                 sender_email=from_email,
+                **links,
             )
 
             subject = f"Safety Solutions for {company_name}"
 
             if dry_run:
-                log.info(f"  [DRY RUN] Would send to: {company.get('email')}")
+                link_note = f" (link: {links['website_url']})" if links["website_url"] else ""
+                log.info(f"  [DRY RUN] Would send to: {company.get('email')}{link_note}")
                 sent_count += 1
                 continue
 
-            if sender.send(company.get("email"), subject, html_body):
-                update_email_status(engine, company["id"], "sent")
+            message_id = sender.send(company.get("email"), subject, html_body,
+                                     unsubscribe_url=links["unsubscribe_url"])
+            if message_id:
+                update_email_status(engine, company["id"], "sent", message_id=message_id)
                 sent_count += 1
             else:
                 update_email_status(engine, company["id"], "failed", "SMTP send failed")
@@ -308,6 +314,7 @@ def run_email_test():
         company_name="Test Company",
         sender_name=from_name,
         sender_email=from_email,
+        **tracking_links("test"),
     )
 
     success = send_email(
@@ -320,6 +327,43 @@ def run_email_test():
         log.info("  Test email sent successfully!")
     else:
         log.error("  Failed to send test email")
+
+
+def run_inbox_check():
+    """Record replies, bounces and unsubscribe replies from the Zoho inbox."""
+    from src.inbox import check_inbox
+
+    log = get_logger()
+    log.info("=" * 60)
+    log.info("  INBOX CHECK")
+    log.info("=" * 60)
+
+    stats = check_inbox(get_engine())
+
+    log.info(f"  Scanned: {stats['scanned']}  New replies: {stats['replies']}  "
+             f"Bounces: {stats['bounces']}  Unsubscribes: {stats['unsubscribes']}")
+
+
+def run_stats():
+    """Print email funnel counts."""
+    log = get_logger()
+    s = get_summary(get_engine())
+    sent = s.get("emails_sent", 0) + s.get("emails_bounced", 0) + s.get("unsubscribed", 0)
+
+    def pct(n):
+        return f"{n / sent * 100:.1f}%" if sent else "-"
+
+    log.info("=" * 60)
+    log.info("  EMAIL STATS")
+    log.info("=" * 60)
+    log.info(f"  Companies:     {s.get('total_companies', 0)}  (with email: {s.get('with_email', 0)})")
+    log.info(f"  Pending:       {s.get('emails_pending', 0)}")
+    log.info(f"  Sent:          {sent}")
+    log.info(f"  Clicked:       {s.get('emails_clicked', 0)}  ({pct(s.get('emails_clicked', 0))})")
+    log.info(f"  Replied:       {s.get('emails_replied', 0)}  ({pct(s.get('emails_replied', 0))})")
+    log.info(f"  Bounced:       {s.get('emails_bounced', 0)}  ({pct(s.get('emails_bounced', 0))})")
+    log.info(f"  Unsubscribed:  {s.get('unsubscribed', 0)}")
+    log.info(f"  Failed:        {s.get('emails_failed', 0)}")
 
 
 def run_scheduled():
@@ -372,6 +416,14 @@ def main():
 
         if sys.argv[1] == "--send-test":
             run_email_test()
+            return
+
+        if sys.argv[1] == "--check-inbox":
+            run_inbox_check()
+            return
+
+        if sys.argv[1] == "--stats":
+            run_stats()
             return
 
         sources = sys.argv[1:]

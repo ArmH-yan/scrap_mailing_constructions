@@ -212,15 +212,17 @@ def update_company_email(engine, company_id: int, email: str):
         conn.commit()
 
 
-def update_email_status(engine, company_id: int, status: str, error: str = None):
+def update_email_status(engine, company_id: int, status: str, error: str = None,
+                        message_id: str = None):
     """Update email status for a company."""
     with engine.connect() as conn:
         if status == "sent":
             conn.execute(text("""
                 UPDATE companies
-                SET email_status = :status, email_sent_at = NOW(), email_error = NULL
+                SET email_status = :status, email_sent_at = NOW(), email_error = NULL,
+                    email_message_id = :message_id
                 WHERE id = :id
-            """), {"id": company_id, "status": status})
+            """), {"id": company_id, "status": status, "message_id": message_id})
         else:
             conn.execute(text("""
                 UPDATE companies
@@ -233,8 +235,80 @@ def update_email_status(engine, company_id: int, status: str, error: str = None)
 def get_summary(engine) -> dict:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT * FROM v_lead_summary")).fetchone()
-        if row:
-            cols = ["total_companies", "with_website", "with_email", "with_phone",
-                     "emails_sent", "emails_failed", "emails_pending"]
-            return dict(zip(cols, row))
-        return {}
+        return dict(row._mapping) if row else {}
+
+
+# === Email engagement tracking ===
+
+def find_company_by_token(engine, token: str) -> dict | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM companies WHERE tracking_token = :t"), {"t": token}
+        ).fetchone()
+        return dict(row._mapping) if row else None
+
+
+def find_company_for_reply(engine, ref_ids: list[str], from_email: str) -> dict | None:
+    """Match an incoming mail to a company: by the Message-ID it replies to, then by sender."""
+    with engine.connect() as conn:
+        if ref_ids:
+            row = conn.execute(
+                text("SELECT * FROM companies WHERE email_message_id = ANY(:ids) LIMIT 1"),
+                {"ids": ref_ids},
+            ).fetchone()
+            if row:
+                return dict(row._mapping)
+        if from_email:
+            row = conn.execute(
+                text("""SELECT * FROM companies
+                        WHERE lower(email) = lower(:e) AND email_sent_at IS NOT NULL
+                        LIMIT 1"""),
+                {"e": from_email},
+            ).fetchone()
+            if row:
+                return dict(row._mapping)
+    return None
+
+
+def find_sent_company_by_email(engine, emails: list[str]) -> dict | None:
+    if not emails:
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("""SELECT * FROM companies
+                    WHERE lower(email) = ANY(:emails) AND email_sent_at IS NOT NULL
+                    LIMIT 1"""),
+            {"emails": [e.lower() for e in emails]},
+        ).fetchone()
+        return dict(row._mapping) if row else None
+
+
+def event_exists(engine, company_id: int, event_type: str, detail: str) -> bool:
+    with engine.connect() as conn:
+        return conn.execute(
+            text("""SELECT 1 FROM email_events
+                    WHERE company_id = :id AND event_type = :type AND detail = :detail"""),
+            {"id": company_id, "type": event_type, "detail": detail},
+        ).fetchone() is not None
+
+
+def record_email_event(engine, company_id: int, event_type: str, detail: str = None):
+    """Log an event and update the company's engagement columns.
+
+    event_type: click | reply | bounce | unsubscribe
+    """
+    updates = {
+        "click": "clicked_at = COALESCE(clicked_at, NOW())",
+        "reply": "replied_at = COALESCE(replied_at, NOW())",
+        "bounce": "email_status = 'bounced'",
+        "unsubscribe": "email_status = 'unsubscribed', unsubscribed_at = COALESCE(unsubscribed_at, NOW())",
+    }
+    with engine.connect() as conn:
+        conn.execute(
+            text("""INSERT INTO email_events (company_id, event_type, detail)
+                    VALUES (:id, :type, :detail)"""),
+            {"id": company_id, "type": event_type, "detail": detail},
+        )
+        conn.execute(text(f"UPDATE companies SET {updates[event_type]} WHERE id = :id"),
+                     {"id": company_id})
+        conn.commit()

@@ -22,3 +22,6 @@ dnspython
 
 # Email
 jinja2
+
+# Tracker server (tracker/app.py)
+flask

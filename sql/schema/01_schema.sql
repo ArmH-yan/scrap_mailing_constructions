@@ -30,6 +30,18 @@ COMMENT ON TABLE companies IS 'Companies with content-hash dedup and email track
 -- Upgrade older databases created before the website column existed
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS website VARCHAR(500);
 
+-- Email tracking: per-company link token, sent Message-ID, engagement times.
+-- The volatile default gives every existing row its own token on upgrade.
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS tracking_token VARCHAR(16)
+    DEFAULT substr(md5(random()::text || clock_timestamp()::text), 1, 12);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS email_message_id VARCHAR(255);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS clicked_at       TIMESTAMPTZ;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS replied_at       TIMESTAMPTZ;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS unsubscribed_at  TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_companies_token ON companies(tracking_token);
+CREATE INDEX IF NOT EXISTS idx_companies_message_id ON companies(email_message_id);
+
 CREATE INDEX IF NOT EXISTS idx_companies_hash ON companies(content_hash);
 CREATE INDEX IF NOT EXISTS idx_companies_email_status ON companies(email_status);
 
@@ -52,6 +64,18 @@ WHERE a.id > b.id
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_value
     ON contacts(company_id, contact_type, contact_value);
+
+
+-- One row per click / reply / bounce / unsubscribe (email_status = latest state)
+CREATE TABLE IF NOT EXISTS email_events (
+    id          SERIAL      PRIMARY KEY,
+    company_id  INTEGER     REFERENCES companies(id) ON DELETE CASCADE,
+    event_type  VARCHAR(20) NOT NULL,
+    detail      TEXT,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_events_company ON email_events(company_id, event_type);
 
 
 CREATE TABLE IF NOT EXISTS crawl_runs (
@@ -78,5 +102,9 @@ SELECT
     COUNT(*) FILTER (WHERE phone IS NOT NULL AND phone != '') AS with_phone,
     COUNT(*) FILTER (WHERE email_status = 'sent') AS emails_sent,
     COUNT(*) FILTER (WHERE email_status = 'failed') AS emails_failed,
-    COUNT(*) FILTER (WHERE email_status = 'pending') AS emails_pending
+    COUNT(*) FILTER (WHERE email_status = 'pending') AS emails_pending,
+    COUNT(*) FILTER (WHERE clicked_at IS NOT NULL) AS emails_clicked,
+    COUNT(*) FILTER (WHERE replied_at IS NOT NULL) AS emails_replied,
+    COUNT(*) FILTER (WHERE email_status = 'bounced') AS emails_bounced,
+    COUNT(*) FILTER (WHERE email_status = 'unsubscribed') AS unsubscribed
 FROM companies;

@@ -99,6 +99,28 @@ python main.py --send-dry
 python main.py --send
 ```
 
+### Track Results
+
+```bash
+# Record replies, bounces and "unsubscribe" replies from the Zoho inbox
+python main.py --check-inbox
+
+# Funnel: sent / clicked / replied / bounced / unsubscribed
+python main.py --stats
+
+# Click + unsubscribe link server (deploy on e.g. go.thenest.am, then set TRACK_BASE_URL)
+python -m tracker.app
+```
+
+Each company has its own `tracking_token`. With `TRACK_BASE_URL` set, the template gets:
+
+| Variable | Use |
+|----------|-----|
+| `{{ website_url }}` | Website button: logs the click, then redirects to `WEBSITE_URL?utm_source=email&c=<token>` |
+| `{{ unsubscribe_url }}` | Unsubscribe link (also sent as a `List-Unsubscribe` header) |
+
+Wrap the button in `{% if website_url %}…{% endif %}` so it stays hidden until the site is live.
+
 ## Sources
 
 | Source | Type | Companies | Notes |
