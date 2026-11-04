@@ -7,6 +7,22 @@ an email outreach campaign for **The Nest** (thenest.am) safety services:
 - Installation of Metal Structures
 - Safety Net System Installation
 
+## Working with NEST (agent mode)
+
+The NEST operations platform (nest-apps) now holds the companies and does the mailing:
+campaigns, sending, click/unsubscribe tracking and the reply check all happen there
+(Business → Mailing). This project only **scrapes**, as an agent:
+
+```bash
+python main.py --agent
+```
+
+It asks NEST for work every `AGENT_POLL_SECONDS`, runs the directory scrapes and website
+email searches requested in Mailing → Scraping, and sends every company it finds to
+NEST (which deduplicates them). Set `NEST_API_URL` and `NEST_SERVICE_KEY` (NEST's
+`OUTREACH_SERVICE_KEY`) in `.env`. In this mode the local PostgreSQL, `--send`,
+`--check-inbox` and `tracker/app.py` are not used. The standalone pipeline below still works.
+
 ## Features
 
 - **Scraping** from four Armenian directories (construction.am, spyur.am, norakaruyc.am, myhome.am)

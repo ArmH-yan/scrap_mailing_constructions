@@ -402,6 +402,13 @@ def main():
     sources = None
 
     if len(sys.argv) > 1:
+        if sys.argv[1] == "--agent":
+            # Scrapes requested in the NEST manager app; results go to NEST (src/agent.py)
+            from src.agent import run_agent
+            setup_logging()
+            run_agent()
+            return
+
         if sys.argv[1] == "--schedule":
             run_scheduled()
             return

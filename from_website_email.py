@@ -68,6 +68,49 @@ def _http_check(company: dict):
         return company, SiteResult(status="dead", error=f"{type(e).__name__}: {e}")
 
 
+def check_companies(companies: list[dict], workers: int = 5, browser: bool = True,
+                    verbose: bool = True) -> list[tuple[dict, SiteResult]]:
+    """Checks each company's website (company: id, company_name, website):
+    1. HTTP, several in parallel; 2. Playwright for JS-only or blocking sites;
+    3. an unverified info@domain guess for live sites without an email.
+    Used by main() below and by the NEST agent (src/agent.py)."""
+    say = print if verbose else (lambda *a, **k: None)
+
+    # 1. HTTP pass (parallel)
+    results = []
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(_http_check, c) for c in companies]
+        for i, future in enumerate(as_completed(futures), 1):
+            company, result = future.result()
+            results.append((company, result))
+            note = result.email or result.status + (f" ({result.error})" if result.error and result.status == "dead" else "")
+            say(f"  [{i}/{len(companies)}] {company['company_name'][:45]:45} {note}")
+
+    # 2. Browser pass (one browser, sequential — Playwright sync API is single-threaded)
+    to_render = [(c, r) for c, r in results if r.needs_browser]
+    if to_render and browser:
+        say(f"\n  Browser pass: {len(to_render)} sites")
+        try:
+            fetcher = BrowserFetcher()
+        except Exception as e:
+            say(f"  Playwright unavailable ({e}) — skipping browser pass")
+            fetcher = None
+        if fetcher:
+            try:
+                for company, result in to_render:
+                    check_website_browser(company["website"], fetcher, result)
+                    say(f"  [browser] {company['company_name'][:45]:45} {result.email or result.status}")
+            finally:
+                fetcher.close()
+
+    # 3. Guesses for live sites with no email
+    for company, result in results:
+        if result.status == "no_email":
+            domain = site_domain(result.final_url or company["website"])
+            result.guess = guess_email(domain) if domain else ""
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Scrape emails from company websites")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be updated without writing to DB")
@@ -99,41 +142,13 @@ def main():
         print("  Nothing to do.")
         return
 
-    # 1. HTTP pass (parallel)
-    results = []
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = [executor.submit(_http_check, c) for c in companies]
-        for i, future in enumerate(as_completed(futures), 1):
-            company, result = future.result()
-            results.append((company, result))
-            note = result.email or result.status + (f" ({result.error})" if result.error and result.status == "dead" else "")
-            print(f"  [{i}/{len(companies)}] {company['company_name'][:45]:45} {note}")
+    results = check_companies(companies, workers=args.workers, browser=not args.no_browser)
 
-    # 2. Browser pass (one browser, sequential — Playwright sync API is single-threaded)
-    to_render = [(c, r) for c, r in results if r.needs_browser]
-    if to_render and not args.no_browser:
-        print(f"\n  Browser pass: {len(to_render)} sites")
-        try:
-            fetcher = BrowserFetcher()
-        except Exception as e:
-            print(f"  Playwright unavailable ({e}) — skipping browser pass")
-            fetcher = None
-        if fetcher:
-            try:
-                for company, result in to_render:
-                    check_website_browser(company["website"], fetcher, result)
-                    print(f"  [browser] {company['company_name'][:45]:45} {result.email or result.status}")
-            finally:
-                fetcher.close()
-
-    # 3. Guesses for live sites with no email, then save
+    # 3. Save (guesses were made by check_companies)
     counts = {"found": 0, "no_email": 0, "dead": 0, "blocked": 0}
     guesses = 0
     for company, result in results:
-        if result.status == "no_email":
-            domain = site_domain(result.final_url or company["website"])
-            result.guess = guess_email(domain) if domain else ""
-            guesses += bool(result.guess)
+        guesses += bool(result.guess)
         counts[result.status] = counts.get(result.status, 0) + 1
         if not args.dry_run:
             save_website_check(engine, company["id"], result.status, result.email,
