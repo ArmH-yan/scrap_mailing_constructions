@@ -4,13 +4,17 @@ SMTP email sending (Zoho Mail / Gmail) with HTML templates and tracked links.
 """
 
 import os
+import re
 import time
 import smtplib
 import logging
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.utils import make_msgid
 from urllib.parse import urlencode
+
+from bs4 import BeautifulSoup
 
 log = logging.getLogger("leadgen")
 
@@ -73,9 +77,39 @@ def get_smtp_connection():
         return None
 
 
+def html_to_text(html: str) -> str:
+    """Plain-text version of an HTML email (sent alongside it; spam filters expect one)."""
+    soup = BeautifulSoup(html, "html.parser")
+    for el in soup(["head", "style", "script"]):
+        el.decompose()
+    for el in soup.find_all(style=re.compile(r"display\s*:\s*none")):
+        el.decompose()                                      # hidden preview text
+    for a in soup.find_all("a", href=True):
+        href, label = a["href"], a.get_text(strip=True)
+        if label and href.startswith("http") and href not in label:
+            a.append(f" ({href})")
+    lines = (" ".join(line.split()) for line in soup.get_text("\n").splitlines())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def _build_message(to_email: str, subject: str, html_body: str,
-                   message_id: str, unsubscribe_url: str = "") -> str:
-    msg = MIMEMultipart("alternative")
+                   message_id: str, unsubscribe_url: str = "", images=()) -> str:
+    """multipart/related (when there are images) wrapping multipart/alternative (text + html)."""
+    body = MIMEMultipart("alternative")
+    body.attach(MIMEText(html_to_text(html_body), "plain", "utf-8"))
+    body.attach(MIMEText(html_body, "html", "utf-8"))
+
+    if images:
+        msg = MIMEMultipart("related")
+        msg.attach(body)
+        for img in images:
+            part = MIMEImage(img.data, _subtype=img.subtype)
+            part.add_header("Content-ID", f"<{img.cid}>")
+            part.add_header("Content-Disposition", "inline", filename=img.filename)
+            msg.attach(part)
+    else:
+        msg = body
+
     msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
     msg["To"] = to_email
     msg["Subject"] = subject
@@ -84,7 +118,6 @@ def _build_message(to_email: str, subject: str, html_body: str,
         # Lets Gmail/Outlook show their own "Unsubscribe" button (one-click, RFC 8058)
         msg["List-Unsubscribe"] = f"<{unsubscribe_url}>, <mailto:{SMTP_FROM_EMAIL}?subject=unsubscribe>"
         msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
     return msg.as_string()
 
 
@@ -117,7 +150,7 @@ class EmailSender:
             self.server = None
 
     def send(self, to_email: str, subject: str, html_body: str,
-             unsubscribe_url: str = "") -> str | None:
+             unsubscribe_url: str = "", images=()) -> str | None:
         """Send one email. Returns its Message-ID (used to match replies), or None."""
         if not to_email:
             log.warning("  No recipient email provided")
@@ -129,7 +162,7 @@ class EmailSender:
 
         domain = SMTP_FROM_EMAIL.split("@")[-1] or None
         message_id = make_msgid(domain=domain)
-        message = _build_message(to_email, subject, html_body, message_id, unsubscribe_url)
+        message = _build_message(to_email, subject, html_body, message_id, unsubscribe_url, images)
         for attempt in range(2):
             if self.server is None:
                 self.server = get_smtp_connection()
@@ -152,7 +185,8 @@ class EmailSender:
         return None
 
 
-def send_email(to_email: str, subject: str, html_body: str, to_name: str = None) -> bool:
+def send_email(to_email: str, subject: str, html_body: str, to_name: str = None,
+               images=()) -> bool:
     """Send a single HTML email (opens and closes its own connection)."""
     with EmailSender(delay=0) as sender:
-        return sender.send(to_email, subject, html_body) is not None
+        return sender.send(to_email, subject, html_body, images=images) is not None

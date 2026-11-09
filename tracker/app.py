@@ -30,7 +30,7 @@ engine = get_engine()
 
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Nest</title>
+<title>NEST</title>
 <style>body{{font-family:system-ui,sans-serif;max-width:480px;margin:15vh auto;padding:0 16px;color:#222}}
 button{{padding:10px 18px;font-size:16px;cursor:pointer}}</style></head>
 <body>{body}</body></html>"""
@@ -49,7 +49,7 @@ def unsubscribe_page(token):
     # A confirm button, not an instant unsubscribe: mail scanners open every link in an email
     return PAGE.format(body="""
         <h2>Unsubscribe</h2>
-        <p>Stop receiving emails from The Nest?</p>
+        <p>Stop receiving emails from NEST?</p>
         <form method="post"><button type="submit">Unsubscribe</button></form>""")
 
 

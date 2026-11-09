@@ -42,7 +42,7 @@ The minimum to change is the Zoho login:
 ```bash
 SMTP_USER=info@thenest.am
 SMTP_PASS=your_app_password
-SMTP_FROM_NAME=The Nest
+SMTP_FROM_NAME=NEST
 SMTP_FROM_EMAIL=info@thenest.am
 TEST_EMAIL=your_personal_address@example.com
 ```
@@ -126,6 +126,7 @@ Results per company: `website_status` (`found` / `no_email` / `dead` / `blocked`
 ### Send emails
 
 ```bash
+python main.py --preview       # render the email to data/preview/email.html (open in a browser)
 python main.py --send-test     # one email to TEST_EMAIL
 python main.py --send-dry      # list who would get an email, send nothing
 python main.py --send          # send to every company with email_status = pending
@@ -257,25 +258,43 @@ unique per company, type and value.
      (`company_name`, `phone`, `email`, `website`, `city`, `director`, `source_url`, `source_site`)
 3. Wire them into `run_source` and add a page limit to `PAGE_LIMITS` in `main.py`.
 
-### Email templates
+### Email template
 
-Templates are Jinja2 files in `templates/` (set with `EMAIL_TEMPLATE_PATH`). Variables:
+`templates/email_template.html` is the Armenian outreach email (Jinja2, set with
+`EMAIL_TEMPLATE_PATH`). It is built from 600px tables with inline styles so it looks the same
+in Gmail, Outlook and Apple Mail, and stacks into one column on phones.
+
+Sections: logo → hero with call button → greeting → services → why us → portfolio →
+client logos → call to action (phone + website) → footer → unsubscribe line.
+
+**Editing text:** the brand name, phone, website and colors are set once at the top of the
+template (`{% set brand = ... %}`, `phone_link`, `site_text`, `yellow`…). Services and
+"why us" items are lists near their sections.
+
+**Images** — drop files in, they are resized and converted on send (PNG/JPG/WebP accepted):
+
+| Folder | Used for | Notes |
+|--------|----------|-------|
+| `templates/assets/logo.png` | Header logo | Transparent background, dark text |
+| `templates/assets/clients/` | "Մեզ վստահում են" logo grid | 5 per row, file name order |
+| `templates/assets/portfolio/` | "Մեր աշխատանքները" photos | Up to 6, cropped to 4:3, file name order (`01-…`, `02-…`) |
+
+Images are attached to each email inline (`cid:`), so nothing needs to be hosted.
+With no portfolio photos the section is left out of sent emails; `--preview` shows
+placeholders where they will go.
+
+**Variables** (filled in by `main.py`):
 
 | Variable | Value |
 |----------|-------|
-| `{{ company_name }}` | Company name |
-| `{{ sender_name }}` | `SMTP_FROM_NAME` |
-| `{{ sender_email }}` | `SMTP_FROM_EMAIL` |
-| `{{ website_url }}` | Tracked website link (empty while `TRACK_BASE_URL` is unset) |
-| `{{ unsubscribe_url }}` | Tracked unsubscribe link (empty while `TRACK_BASE_URL` is unset) |
+| `{{ company_name }}` | Short name for the greeting (`"MACON" LLC` → `MACON`); empty → "Հարգելի գործընկեր" |
+| `{{ logo_src }}`, `{{ clients }}`, `{{ portfolio }}` | Images from `templates/assets/` |
+| `{{ sender_email }}` | `SMTP_FROM_EMAIL` (shown in the footer) |
+| `{{ website_url }}` | Tracked website link; the template falls back to `https://thenest.am` while `TRACK_BASE_URL` is unset |
+| `{{ unsubscribe_url }}` | Tracked unsubscribe link; without it the footer asks people to reply «Չուղարկել» |
 
-Show the website button only when the link exists:
-
-```html
-{% if website_url %}<a href="{{ website_url }}">Visit our website</a>{% endif %}
-```
-
-`{{ project_names }}` is not filled in by the pipeline — don't use it.
+The subject line is `EMAIL_SUBJECT`. Each email also carries a plain-text version generated
+from the HTML.
 
 ### Configuration reference
 
@@ -302,6 +321,8 @@ Show the website button only when the link exists:
 | `IMAP_FOLDER` | INBOX | Folder to scan |
 | `IMAP_LOOKBACK_DAYS` | 30 | How far back to scan |
 | `EMAIL_TEMPLATE_PATH` | templates/email_template.html | Template file |
+| `EMAIL_SUBJECT` | Անվտանգության և փոշեպաշտպան ցանցեր ձեր շինհրապարակի համար | Subject line |
+| `EMAIL_ASSETS_DIR` | templates/assets | Logo, client logos and portfolio photos |
 | `TEST_EMAIL` | — | Recipient for `--send-test` |
 | `TRACK_BASE_URL` | empty | Public address of `tracker/app.py`; empty = no tracked links |
 | `WEBSITE_URL` | https://thenest.am | Where clicks are redirected |
@@ -314,6 +335,7 @@ Show the website button only when the link exists:
 |---------|-------------|
 | `python main.py [source ...]` | Scrape all or the given sources |
 | `python main.py --schedule` | Scrape every `RUN_INTERVAL_HOURS` |
+| `python main.py --preview` | Render the email to `data/preview/email.html` |
 | `python main.py --send-test` | Send a test email to `TEST_EMAIL` |
 | `python main.py --send-dry` | Preview recipients |
 | `python main.py --send` | Send to pending companies |

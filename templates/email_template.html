@@ -1,49 +1,324 @@
+{#-
+  NEST — outreach email (Armenian)
+
+  Variables (filled in by main.py):
+    company_name     short company name, e.g. MACON (may be empty)
+    logo_src         logo image
+    clients          [{src, alt}]  client logos      (templates/assets/clients/)
+    portfolio        [{src, alt}]  project photos    (templates/assets/portfolio/)
+    show_placeholders  true in --preview when there are no portfolio photos yet
+    website_url      tracked website link (empty until TRACK_BASE_URL is set)
+    unsubscribe_url  tracked unsubscribe link (empty until TRACK_BASE_URL is set)
+    sender_email     reply address
+
+  Layout: 600px tables with inline styles — the only layout every email client
+  (Gmail, Outlook, Apple Mail) renders the same way.
+-#}
+{%- set brand = "NEST" -%}
+{%- set phone_link = "+37441751500" -%}
+{%- set phone_text = "+374 41 751 500" -%}
+{%- set site_text = "thenest.am" -%}
+{%- set site_url = website_url or "https://thenest.am" -%}
+{%- set yellow = "#E1A504" -%}
+{%- set black = "#111111" -%}
+{%- set gray = "#F3F3F1" -%}
+{%- set muted = "#5C5F66" -%}
+{%- set font = "'Segoe UI', Arial, 'Noto Sans Armenian', Sylfaen, Helvetica, sans-serif" -%}
 <!DOCTYPE html>
-<html>
+<html lang="hy" xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>{{ brand }} — անվտանգության և փոշեպաշտպան ցանցեր</title>
+  <style>
+    body { margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; }
+    table { border-collapse: collapse; }
+    img { border: 0; display: block; outline: none; text-decoration: none; }
+    a { text-decoration: none; }
+    @media only screen and (max-width: 620px) {
+      .container { width: 100% !important; }
+      .px { padding-left: 20px !important; padding-right: 20px !important; }
+      .stack { display: block !important; width: 100% !important; box-sizing: border-box; }
+      .stack-gap { padding: 0 0 12px 0 !important; }
+      .hero-title { font-size: 26px !important; line-height: 34px !important; }
+      .btn { display: block !important; text-align: center !important; }
+      .client-cell { padding: 8px 4px !important; height: 56px !important; }
+      .client-img { max-width: 100% !important; max-height: 32px !important; }
+    }
+  </style>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    
-    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-        <h1 style="color: #2c5282; margin: 0; font-size: 24px;">Safety Solutions for Your Projects</h1>
-    </div>
+<body style="margin:0; padding:0; background-color:{{ gray }};">
 
-    <p>Dear {{ company_name }},</p>
+  <!-- Inbox preview text (hidden) -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:{{ gray }};">
+    Անվտանգության և փոշեպաշտպան ցանցեր՝ պրոֆեսիոնալ մոնտաժով և ժամանակին։
+  </div>
 
-    <p>We are reaching out to offer our professional safety services for your construction projects. We specialize in:</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }};">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
 
-    <ul style="background-color: #f8f9fa; padding: 15px 15px 15px 35px; border-radius: 5px;">
-        <li><strong>Dust-Proof Mesh Installation</strong> - Protecting your site and surrounding areas</li>
-        <li><strong>Installation of Metal Structures</strong> - Reliable and durable solutions</li>
-        <li><strong>Safety Net System Installation</strong> - Fall protection for workers and debris</li>
-    </ul>
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px; background-color:#FFFFFF;">
 
-    {% if project_names %}
-    <p>We noticed your work on <strong>{{ project_names }}</strong> and believe our services would be valuable for your current and future projects.</p>
-    {% endif %}
+          <!-- ===== Header: logo ===== -->
+          <tr>
+            <td align="center" bgcolor="#FFFFFF" style="padding:28px 30px 22px 30px; border-top:6px solid {{ yellow }};">
+              <a href="{{ site_url }}" target="_blank">
+                {%- if logo_src %}
+                <img src="{{ logo_src }}" width="180" alt="{{ brand }}" style="width:180px; max-width:180px; height:auto;">
+                {%- else %}
+                <span style="font-family:{{ font }}; font-size:32px; font-weight:800; color:{{ black }}; letter-spacing:4px;">NEST</span>
+                {%- endif %}
+              </a>
+            </td>
+          </tr>
 
-    <p>Our team is ready to provide:</p>
-    <ul>
-        <li>Free consultation and site assessment</li>
-        <li>Competitive pricing</li>
-        <li>Quick installation turnaround</li>
-        <li>Compliance with safety regulations</li>
-    </ul>
+          <!-- ===== Hero ===== -->
+          <tr>
+            <td class="px" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:40px 40px 42px 40px;">
+              <p style="margin:0 0 14px 0; font-family:{{ font }}; font-size:13px; line-height:18px; font-weight:700; letter-spacing:1.5px; color:{{ yellow }};">
+                ՇԻՆՀՐԱՊԱՐԱԿԻ ԱՆՎՏԱՆԳՈՒԹՅՈՒՆ
+              </p>
+              <h1 class="hero-title" style="margin:0 0 16px 0; font-family:{{ font }}; font-size:30px; line-height:38px; font-weight:800; color:#FFFFFF;">
+                Պրոֆեսիոնալ մոնտաժ՝ ճիշտ ժամանակին
+              </h1>
+              <p style="margin:0 0 28px 0; font-family:{{ font }}; font-size:16px; line-height:25px; color:#D6D6D6;">
+                Տեղադրում ենք անվտանգության և փոշեպաշտպան ցանցեր՝ հարմարեցված ձեր օբյեկտի պահանջներին ու ժամանակացույցին։
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="btn" bgcolor="{{ yellow }}" style="background-color:{{ yellow }}; border-radius:4px;">
+                    <a href="tel:{{ phone_link }}" target="_blank" style="display:inline-block; padding:14px 26px; font-family:{{ font }}; font-size:16px; font-weight:700; color:{{ black }}; text-decoration:none;">
+                      Զանգահարել՝ {{ phone_text }}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-    <div style="text-align: center; margin: 30px 0;">
-        <a href="mailto:{{ sender_email }}?subject=Safety Services Inquiry" 
-           style="background-color: #2c5282; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-            Contact Us Today
-        </a>
-    </div>
+          <!-- ===== Greeting ===== -->
+          <tr>
+            <td class="px" style="padding:36px 40px 8px 40px; font-family:{{ font }}; font-size:16px; line-height:26px; color:{{ black }};">
+              <p style="margin:0 0 16px 0;">
+                {%- if company_name %}
+                Հարգելի «{{ company_name }}» թիմ,
+                {%- else %}
+                Հարգելի գործընկեր,
+                {%- endif %}
+              </p>
+              <p style="margin:0 0 16px 0;">
+                Մենք {{ brand }}-ն ենք՝ շինարարական օբյեկտներում անվտանգության համակարգերի տեղադրման մասնագիտացված թիմ։ Կցանկանայինք առաջարկել մեր ծառայությունները ձեր ընթացիկ և ապագա նախագծերի համար։
+              </p>
+            </td>
+          </tr>
 
-    <p>We look forward to discussing how we can contribute to the safety and success of your projects.</p>
+          <!-- ===== Services ===== -->
+          <tr>
+            <td class="px" style="padding:12px 40px 8px 40px;">
+              <h2 style="margin:0 0 18px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+                Մեր ծառայությունները
+              </h2>
+              {%- set services = [
+                ("01", "Անվտանգության ցանցային համակարգեր",
+                 "Ուղղահայաց և հորիզոնական պաշտպանիչ ցանցեր, որոնք պաշտպանում են աշխատակիցներին բարձրությունից ընկնելուց, իսկ անցորդներին՝ ընկնող առարկաներից։"),
+                ("02", "Փոշեպաշտպան ցանցեր",
+                 "Ֆասադային ցանցեր, որոնք նվազեցնում են փոշին և աղբը, պաշտպանում հարևան տարածքները և շինհրապարակին տալիս կոկիկ տեսք։"),
+              ] %}
+              {%- for number, title, text in services %}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px 0;">
+                <tr>
+                  <td width="52" valign="top" style="width:52px; padding:0 14px 0 0;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="{{ yellow }}" width="40" height="40" style="width:40px; height:40px; background-color:{{ yellow }}; font-family:{{ font }}; font-size:15px; font-weight:800; color:{{ black }};">
+                          {{ number }}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td valign="top" style="font-family:{{ font }};">
+                    <p style="margin:0 0 4px 0; font-size:17px; line-height:24px; font-weight:700; color:{{ black }};">{{ title }}</p>
+                    <p style="margin:0; font-size:15px; line-height:23px; color:{{ muted }};">{{ text }}</p>
+                  </td>
+                </tr>
+              </table>
+              {%- endfor %}
+            </td>
+          </tr>
 
-    <p>Best regards,<br>
-    <strong>{{ sender_name }}</strong><br>
-    {{ sender_email }}</p>
+          <!-- ===== Portfolio ===== -->
+          {%- set works = portfolio if portfolio else ([{"src": "", "alt": "Լուսանկար 1"}, {"src": "", "alt": "Լուսանկար 2"}, {"src": "", "alt": "Լուսանկար 3"}, {"src": "", "alt": "Լուսանկար 4"}] if show_placeholders else []) %}
+          {%- if works %}
+          <tr>
+            <td class="px" style="padding:6px 40px 26px 40px;">
+              <h2 style="margin:0 0 6px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+                Մեր աշխատանքները
+              </h2>
+              <p style="margin:0 0 18px 0; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
+                Իրականացված նախագծերից մի քանիսը։
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {%- for row in works | batch(2) %}
+                <tr>
+                  {%- for work in row %}
+                  <td class="stack stack-gap" width="50%" valign="top" style="width:50%; padding:0 {{ '6px' if loop.first else '0' }} 12px {{ '0' if loop.first else '6px' }};">
+                    {%- if work.src %}
+                    <img src="{{ work.src }}" width="254" alt="{{ work.alt }}" style="width:100%; max-width:254px; height:auto; border-radius:4px;">
+                    {%- else %}
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" height="190" bgcolor="#E4E4E0" style="height:190px; background-color:#E4E4E0; border:2px dashed #BDBDB6; font-family:{{ font }}; font-size:14px; color:#8A8A84;">
+                          {{ work.alt }}
+                        </td>
+                      </tr>
+                    </table>
+                    {%- endif %}
+                  </td>
+                  {%- endfor %}
+                  {%- if row | length == 1 %}<td class="stack" width="50%" style="width:50%;"></td>{% endif %}
+                </tr>
+                {%- endfor %}
+              </table>
+            </td>
+          </tr>
+          {%- endif %}
 
+          <!-- ===== Why us ===== -->
+          <tr>
+            <td class="px" style="padding:20px 40px 30px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }}; border-left:4px solid {{ yellow }};">
+                <tr>
+                  <td style="padding:24px 24px 10px 24px;">
+                    <h2 style="margin:0 0 16px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+                      Ինչո՞ւ ընտրել մեզ
+                    </h2>
+                    {%- set reasons = [
+                      ("Պրոֆեսիոնալ մոնտաժ", "Փորձառու մասնագետներ և անվտանգության կանոնների խիստ պահպանում։"),
+                      ("Ժամանակին կատարում", "Աշխատում ենք համաձայնեցված ժամկետներում, որպեսզի ձեր շինարարությունը չկանգնի։"),
+                      ("Ճկուն լուծումներ", "Հարմարվում ենք ձեր օբյեկտի չափերին, աշխատանքների փուլին և բյուջեին։"),
+                      ("Անվճար խորհրդատվություն", "Օբյեկտի գնահատում և անհատական առաջարկ՝ մինչև աշխատանքների մեկնարկը։"),
+                    ] %}
+                    {%- for title, text in reasons %}
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px 0;">
+                      <tr>
+                        <td width="26" valign="top" style="width:26px; font-family:{{ font }}; font-size:17px; line-height:24px; font-weight:800; color:{{ yellow }};">✓</td>
+                        <td valign="top" style="font-family:{{ font }};">
+                          <p style="margin:0 0 2px 0; font-size:16px; line-height:23px; font-weight:700; color:{{ black }};">{{ title }}</p>
+                          <p style="margin:0; font-size:15px; line-height:23px; color:{{ muted }};">{{ text }}</p>
+                        </td>
+                      </tr>
+                    </table>
+                    {%- endfor %}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ===== Clients ===== -->
+          {%- if clients %}
+          <tr>
+            <td class="px" style="padding:6px 40px 30px 40px;">
+              <h2 style="margin:0 0 6px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+                Մեզ վստահում են
+              </h2>
+              <p style="margin:0 0 16px 0; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
+                Մեր հաճախորդները՝ Հայաստանի առաջատար կառուցապատողներ և շինարարական ընկերություններ։
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #E6E6E2; border-left:1px solid #E6E6E2;">
+                {%- for row in clients | batch(5) %}
+                <tr>
+                  {%- for client in row %}
+                  <td class="client-cell" align="center" valign="middle" width="20%" height="72" style="width:20%; height:72px; padding:10px 8px; border-right:1px solid #E6E6E2; border-bottom:1px solid #E6E6E2;">
+                    <img class="client-img" src="{{ client.src }}" alt="{{ client.alt }}" style="max-width:88px; max-height:40px; width:auto; height:auto; display:inline-block;">
+                  </td>
+                  {%- endfor %}
+                  {%- for _ in range(5 - row | length) %}
+                  <td class="client-cell" width="20%" style="width:20%; border-right:1px solid #E6E6E2; border-bottom:1px solid #E6E6E2;"></td>
+                  {%- endfor %}
+                </tr>
+                {%- endfor %}
+              </table>
+            </td>
+          </tr>
+          {%- endif %}
+
+          <!-- ===== Call to action ===== -->
+          <tr>
+            <td class="px" bgcolor="{{ yellow }}" style="background-color:{{ yellow }}; padding:34px 40px;">
+              <h2 style="margin:0 0 10px 0; font-family:{{ font }}; font-size:23px; line-height:30px; font-weight:800; color:{{ black }};">
+                Քննարկենք ձեր նախագիծը
+              </h2>
+              <p style="margin:0 0 22px 0; font-family:{{ font }}; font-size:16px; line-height:25px; color:{{ black }};">
+                Զանգահարեք կամ պարզապես պատասխանեք այս նամակին. կպատրաստենք առաջարկ՝ հաշվի առնելով ձեր օբյեկտի առանձնահատկությունները։
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="stack stack-gap" style="padding:0 10px 0 0;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      <tr>
+                        <td class="btn" bgcolor="{{ black }}" style="background-color:{{ black }}; border-radius:4px;">
+                          <a href="tel:{{ phone_link }}" target="_blank" style="display:inline-block; padding:13px 24px; font-family:{{ font }}; font-size:15px; font-weight:700; color:#FFFFFF; text-decoration:none;">
+                            {{ phone_text }}
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td class="stack">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      <tr>
+                        <td class="btn" style="border:2px solid {{ black }}; border-radius:4px;">
+                          <a href="{{ site_url }}" target="_blank" style="display:inline-block; padding:11px 22px; font-family:{{ font }}; font-size:15px; font-weight:700; color:{{ black }}; text-decoration:none;">
+                            Այցելել {{ site_text }}
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ===== Footer ===== -->
+          <tr>
+            <td class="px" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:28px 40px; font-family:{{ font }};">
+              <p style="margin:0 0 6px 0; font-size:16px; line-height:22px; font-weight:800; color:#FFFFFF;">{{ brand }}</p>
+              <p style="margin:0 0 16px 0; font-size:14px; line-height:21px; color:#A9A9A9;">
+                Անվտանգության և փոշեպաշտպան ցանցեր
+              </p>
+              <p style="margin:0; font-size:14px; line-height:24px; color:#FFFFFF;">
+                <a href="tel:{{ phone_link }}" style="color:{{ yellow }}; text-decoration:none;">{{ phone_text }}</a><br>
+                <a href="{{ site_url }}" target="_blank" style="color:{{ yellow }}; text-decoration:none;">{{ site_text }}</a><br>
+                <a href="mailto:{{ sender_email }}" style="color:{{ yellow }}; text-decoration:none;">{{ sender_email }}</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+        <!-- ===== Unsubscribe ===== -->
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+          <tr>
+            <td class="px" align="center" style="padding:18px 40px 6px 40px; font-family:{{ font }}; font-size:12px; line-height:18px; color:#8A8A84;">
+              Այս նամակն ուղարկվել է, քանի որ ձեր ընկերությունը ներկայացված է շինարարական ընկերությունների հրապարակային ցուցակներում։
+              Եթե այլևս չեք ցանկանում ստանալ մեր նամակները,
+              {%- if unsubscribe_url %}
+              <a href="{{ unsubscribe_url }}" target="_blank" style="color:#8A8A84; text-decoration:underline;">սեղմեք այստեղ</a> կամ
+              {%- endif %}
+              պատասխանեք «Չուղարկել» բառով։
+            </td>
+          </tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

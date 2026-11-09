@@ -22,6 +22,7 @@ dnspython
 
 # Email
 jinja2
+pillow          # resizes email images (src/email_assets.py)
 
 # Tracker server (tracker/app.py)
 flask

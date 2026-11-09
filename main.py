@@ -6,6 +6,7 @@ Scrape → Store → Export → Send Emails
 import sys
 import io
 import os
+import re
 import time
 import signal
 from pathlib import Path
@@ -31,6 +32,8 @@ load_dotenv(dotenv_path=ENV_PATH)
 RUN_INTERVAL_HOURS = int(os.getenv("RUN_INTERVAL_HOURS", "6"))
 EMAIL_TEMPLATE_PATH = os.getenv("EMAIL_TEMPLATE_PATH", "templates/email_template.html")
 TEST_EMAIL = os.getenv("TEST_EMAIL", "")
+EMAIL_SUBJECT = os.getenv(
+    "EMAIL_SUBJECT", "Անվտանգության և փոշեպաշտպան ցանցեր ձեր շինհրապարակի համար")
 
 from src.log import setup_logging, get_logger
 
@@ -52,6 +55,7 @@ from src.export import (
 )
 
 from src.email_sender import send_email, EmailSender, DAILY_SEND_LIMIT, tracking_links
+from src.email_assets import load_email_images, template_images, all_images
 
 PAGE_LIMITS = {
     "construction_am": 38,
@@ -192,6 +196,45 @@ def run_pipeline(sources: list[str] = None, config: dict = None):
     return all_companies
 
 
+def short_company_name(name: str) -> str:
+    """Name for the greeting: '"MACON" Limited Liability Company (LLC)' -> 'MACON'."""
+    name = (name or "").strip()
+    quoted = re.search(r'["«“„](.+?)["»”“]', name)
+    if quoted:
+        return quoted.group(1).strip()
+    name = re.sub(
+        r"(?<!\w)(limited liability company|closed joint[- ]stock company|open joint[- ]stock company|"
+        r"co\.?\s*ltd|llc|cjsc|ojsc|ltd|սպը|փբը|բբը|ооо|зао|оао)(?!\w)\.?",
+        "", name, flags=re.IGNORECASE)
+    return re.sub(r"[()\s,]+$", "", re.sub(r"\s{2,}", " ", name)).strip()
+
+
+def load_email_template():
+    template_path = BASE_DIR / EMAIL_TEMPLATE_PATH
+    if not template_path.exists():
+        get_logger().error(f"  Template not found: {template_path}")
+        return None
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(str(template_path.parent)), autoescape=True)
+    return env.get_template(template_path.name)
+
+
+def render_email(template, company_name: str, token: str = "",
+                 preview_dir: Path | None = None) -> tuple[str, list, dict]:
+    """Render the email for one company. Returns (html, images to attach, tracking links)."""
+    images = load_email_images()
+    links = tracking_links(token)
+    html = template.render(
+        company_name=short_company_name(company_name),
+        sender_name=os.getenv("SMTP_FROM_NAME", ""),
+        sender_email=os.getenv("SMTP_FROM_EMAIL", "") or "info@thenest.am",
+        show_placeholders=preview_dir is not None,
+        **template_images(images, preview=preview_dir is not None),
+        **links,
+    )
+    return html, ([] if preview_dir else all_images(images)), links
+
+
 def run_email_send(dry_run: bool = False):
     """Send emails to all companies with pending status."""
     log = get_logger()
@@ -200,15 +243,9 @@ def run_email_send(dry_run: bool = False):
     log.info("  EMAIL SENDING")
     log.info("=" * 60)
 
-    # Load template
-    template_path = BASE_DIR / EMAIL_TEMPLATE_PATH
-    if not template_path.exists():
-        log.error(f"  Template not found: {template_path}")
+    template = load_email_template()
+    if template is None:
         return
-
-    from jinja2 import Template
-    with open(template_path, "r", encoding="utf-8") as f:
-        template = Template(f.read())
 
     # Get companies with email and pending status
     engine = get_engine()
@@ -248,19 +285,8 @@ def run_email_send(dry_run: bool = False):
 
     try:
         for company in eligible:
-            company_name = company.get("company_name", "Valued Partner")
-
-            links = tracking_links(company.get("tracking_token"))
-
-            # Render template
-            html_body = template.render(
-                company_name=company_name,
-                sender_name=from_name,
-                sender_email=from_email,
-                **links,
-            )
-
-            subject = f"Safety Solutions for {company_name}"
+            html_body, images, links = render_email(
+                template, company.get("company_name", ""), company.get("tracking_token"))
 
             if dry_run:
                 link_note = f" (link: {links['website_url']})" if links["website_url"] else ""
@@ -268,8 +294,8 @@ def run_email_send(dry_run: bool = False):
                 sent_count += 1
                 continue
 
-            message_id = sender.send(company.get("email"), subject, html_body,
-                                     unsubscribe_url=links["unsubscribe_url"])
+            message_id = sender.send(company.get("email"), EMAIL_SUBJECT, html_body,
+                                     unsubscribe_url=links["unsubscribe_url"], images=images)
             if message_id:
                 update_email_status(engine, company["id"], "sent", message_id=message_id)
                 sent_count += 1
@@ -297,36 +323,43 @@ def run_email_test():
 
     log.info(f"  Sending test email to: {TEST_EMAIL}")
 
-    # Load template
-    template_path = BASE_DIR / EMAIL_TEMPLATE_PATH
-    if not template_path.exists():
-        log.error(f"  Template not found: {template_path}")
+    template = load_email_template()
+    if template is None:
         return
 
-    from jinja2 import Template
-    with open(template_path, "r", encoding="utf-8") as f:
-        template = Template(f.read())
-
-    from_name = os.getenv("SMTP_FROM_NAME", "")
-    from_email = os.getenv("SMTP_FROM_EMAIL", "")
-
-    html_body = template.render(
-        company_name="Test Company",
-        sender_name=from_name,
-        sender_email=from_email,
-        **tracking_links("test"),
-    )
+    html_body, images, _ = render_email(template, '"ՕՐԻՆԱԿ" ՍՊԸ', "test")
 
     success = send_email(
         to_email=TEST_EMAIL,
-        subject="Test Email - Safety Solutions",
+        subject=f"[ՏԵՍՏ] {EMAIL_SUBJECT}",
         html_body=html_body,
+        images=images,
     )
 
     if success:
         log.info("  Test email sent successfully!")
     else:
         log.error("  Failed to send test email")
+
+
+def run_email_preview():
+    """Render the email to data/preview/email.html to open in a browser."""
+    log = get_logger()
+    template = load_email_template()
+    if template is None:
+        return
+
+    preview_dir = BASE_DIR / "data" / "preview"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    html_body, _, _ = render_email(template, '"ՕՐԻՆԱԿ" ՍՊԸ', preview_dir=preview_dir)
+    out = preview_dir / "email.html"
+    out.write_text(html_body, encoding="utf-8")
+
+    sent_html, images, _ = render_email(template, '"ՕՐԻՆԱԿ" ՍՊԸ')
+    log.info(f"  Preview: {out}")
+    log.info(f"  Subject: {EMAIL_SUBJECT}")
+    log.info(f"  Email as sent — HTML: {len(sent_html.encode('utf-8')) // 1024} KB, "
+             f"images: {len(images)} ({sum(len(i.data) for i in images) // 1024} KB)")
 
 
 def run_inbox_check():
@@ -423,6 +456,10 @@ def main():
 
         if sys.argv[1] == "--send-test":
             run_email_test()
+            return
+
+        if sys.argv[1] == "--preview":
+            run_email_preview()
             return
 
         if sys.argv[1] == "--check-inbox":
