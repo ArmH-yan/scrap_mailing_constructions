@@ -275,11 +275,16 @@ template (`{% set brand = ... %}`, `phone_link`, `site_text`, `yellow`…). Serv
 
 | Folder | Used for | Notes |
 |--------|----------|-------|
-| `templates/assets/logo.png` | Header logo | Transparent background, dark text |
-| `templates/assets/clients/` | "Մեզ վստահում են" logo grid | 5 per row, file name order |
+| `templates/assets/logo.png` | Header logo | The dark-mode logo (white lettering, transparent background); the header is black in every mode |
+| `templates/assets/clients/` | "Մեզ վստահում են" logo grid | 5 per row (2 per row on phones), file name order; each logo is placed on a white rounded card |
 | `templates/assets/portfolio/` | "Մեր աշխատանքները" photos | Up to 6, cropped to 4:3, file name order (`01-…`, `02-…`) |
 
 Images are attached to each email inline (`cid:`), so nothing needs to be hosted.
+
+**Dark mode:** Apple Mail, Outlook for Mac/iOS and Outlook.com switch to the template's own
+dark colors (the `dm-*` classes). Gmail's apps and Outlook for Windows recolor emails
+themselves, so the header, hero, call to action and footer are black in every mode, and the
+logo and client cards are images (mail apps never recolor images).
 With no portfolio photos the section is left out of sent emails; `--preview` shows
 placeholders where they will go.
 

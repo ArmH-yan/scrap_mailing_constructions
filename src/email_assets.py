@@ -3,7 +3,7 @@ Lead Generation — Email images
 Logo, client logos and portfolio photos, resized and converted for email.
 
 Drop files into these folders; they are resized automatically on send:
-    templates/assets/logo.png
+    templates/assets/logo.png     dark-mode logo (white lettering) for the black header
     templates/assets/clients/     client logos   (png, jpg, webp)
     templates/assets/portfolio/   project photos (png, jpg, webp)
 
@@ -20,17 +20,24 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = Path(os.getenv("EMAIL_ASSETS_DIR", BASE_DIR / "templates" / "assets"))
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 # Pixel sizes are ~2x the displayed size so images stay sharp on phones
-LOGO_WIDTH = 360            # shown at 180px
-CLIENT_BOX = (200, 80)      # shown within 100x40
+LOGO_WIDTH = 340            # shown at 170px
+CLIENT_TILE = (540, 200)    # shown at 250x93, 2 per row: white rounded card, logo centered
+CLIENT_PADDING = (48, 30)
+CLIENT_RADIUS = 28
 PORTFOLIO_SIZE = (560, 420) # shown at 264x198, cropped to 4:3
 MAX_PORTFOLIO = 6
+
+# Mail apps in dark mode recolor the email's backgrounds and text but never its images.
+# So anything that must stay readable on a dark background is baked into the image:
+# the logo is the dark-mode version (white lettering, on the black header), client logos
+# get a white card.
 
 
 @dataclass
@@ -73,6 +80,7 @@ def _image_files(folder: Path) -> list[Path]:
 
 
 def _logo() -> EmailImage | None:
+    """Logo for the black header (the dark-mode version: white lettering, yellow net)."""
     path = ASSETS_DIR / "logo.png"
     if not path.exists():
         return None
@@ -82,9 +90,15 @@ def _logo() -> EmailImage | None:
 
 
 def _client(path: Path, index: int) -> EmailImage:
-    im = Image.open(path).convert("RGBA")
-    im.thumbnail(CLIENT_BOX, Image.LANCZOS)
-    return EmailImage(f"client{index}", _png(im), "png", _alt_from_filename(path))
+    """Client logo centered on a white rounded card, readable on light and dark backgrounds."""
+    w, h = CLIENT_TILE
+    logo = Image.open(path).convert("RGBA")
+    logo.thumbnail((w - 2 * CLIENT_PADDING[0], h - 2 * CLIENT_PADDING[1]), Image.LANCZOS)
+    tile = Image.new("RGBA", CLIENT_TILE, (0, 0, 0, 0))
+    ImageDraw.Draw(tile).rounded_rectangle(
+        (0, 0, w - 1, h - 1), CLIENT_RADIUS, fill=(255, 255, 255, 255), outline=(226, 226, 222, 255))
+    tile.alpha_composite(logo, ((w - logo.width) // 2, (h - logo.height) // 2))
+    return EmailImage(f"client{index}", _png(tile), "png", _alt_from_filename(path))
 
 
 def _portfolio(path: Path, index: int) -> EmailImage:

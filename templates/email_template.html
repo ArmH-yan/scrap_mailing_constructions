@@ -3,9 +3,9 @@
 
   Variables (filled in by main.py):
     company_name     short company name, e.g. MACON (may be empty)
-    logo_src         logo image
-    clients          [{src, alt}]  client logos      (templates/assets/clients/)
-    portfolio        [{src, alt}]  project photos    (templates/assets/portfolio/)
+    logo_src         logo with white lettering, for the black header
+    clients          [{src, alt}]  client logos on white cards (templates/assets/clients/)
+    portfolio        [{src, alt}]  project photos             (templates/assets/portfolio/)
     show_placeholders  true in --preview when there are no portfolio photos yet
     website_url      tracked website link (empty until TRACK_BASE_URL is set)
     unsubscribe_url  tracked unsubscribe link (empty until TRACK_BASE_URL is set)
@@ -13,6 +13,13 @@
 
   Layout: 600px tables with inline styles — the only layout every email client
   (Gmail, Outlook, Apple Mail) renders the same way.
+
+  Dark mode:
+    * Apple Mail, Outlook for Mac/iOS, Outlook.com use the dark colors below
+      (prefers-color-scheme / [data-ogsc] / [data-ogsb] rules, via the dm-* classes).
+    * Gmail's apps and Outlook for Windows ignore those and recolor the email themselves.
+      For them the design keeps colored areas dark (header, hero, call to action, footer)
+      and bakes into images anything that must stay readable (logo, client cards).
 -#}
 {%- set brand = "NEST" -%}
 {%- set phone_link = "+37441751500" -%}
@@ -31,10 +38,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="x-apple-disable-message-reformatting">
   <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
-  <meta name="color-scheme" content="light">
-  <meta name="supported-color-schemes" content="light">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
   <title>{{ brand }} — անվտանգության և փոշեպաշտպան ցանցեր</title>
   <style>
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
     body { margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; }
     table { border-collapse: collapse; }
     img { border: 0; display: block; outline: none; text-decoration: none; }
@@ -46,32 +54,49 @@
       .stack-gap { padding: 0 0 12px 0 !important; }
       .hero-title { font-size: 26px !important; line-height: 34px !important; }
       .btn { display: block !important; text-align: center !important; }
-      .client-cell { padding: 8px 4px !important; height: 56px !important; }
-      .client-img { max-width: 100% !important; max-height: 32px !important; }
+      .work-img { max-width: 100% !important; }
+      .client-cell { width: 44% !important; padding: 5px 2% !important; }
+      .client-img { width: 100% !important; max-width: 100% !important; height: auto !important; }
     }
+    @media (prefers-color-scheme: dark) {
+      .dm-page { background-color: #0B0B0B !important; }
+      .dm-surface { background-color: #171717 !important; }
+      .dm-panel { background-color: #232323 !important; }
+      .dm-text { color: #F2F2F2 !important; }
+      .dm-muted { color: #B3B3B3 !important; }
+      .dm-ph { background-color: #232323 !important; border-color: #4A4A4A !important; color: #8C8C8C !important; }
+      .dm-foot { color: #8C8C8C !important; }
+    }
+    [data-ogsb] .dm-page { background-color: #0B0B0B !important; }
+    [data-ogsb] .dm-surface { background-color: #171717 !important; }
+    [data-ogsb] .dm-panel { background-color: #232323 !important; }
+    [data-ogsb] .dm-ph { background-color: #232323 !important; border-color: #4A4A4A !important; }
+    [data-ogsc] .dm-text { color: #F2F2F2 !important; }
+    [data-ogsc] .dm-muted { color: #B3B3B3 !important; }
+    [data-ogsc] .dm-ph, [data-ogsc] .dm-foot { color: #8C8C8C !important; }
   </style>
 </head>
-<body style="margin:0; padding:0; background-color:{{ gray }};">
+<body class="dm-page" style="margin:0; padding:0; background-color:{{ gray }};">
 
   <!-- Inbox preview text (hidden) -->
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:{{ gray }};">
     Անվտանգության և փոշեպաշտպան ցանցեր՝ պրոֆեսիոնալ մոնտաժով և ժամանակին։
   </div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }};">
+  <table role="presentation" class="dm-page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }};">
     <tr>
-      <td align="center" style="padding:24px 12px;">
+      <td class="dm-page" align="center" style="padding:24px 12px;">
 
-        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px; background-color:#FFFFFF;">
+        <table role="presentation" class="container dm-surface" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="width:600px; max-width:600px; background-color:#FFFFFF;">
 
-          <!-- ===== Header: logo ===== -->
+          <!-- ===== Header: logo (black in every mode) ===== -->
           <tr>
-            <td align="center" bgcolor="#FFFFFF" style="padding:28px 30px 22px 30px; border-top:6px solid {{ yellow }};">
+            <td align="center" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:30px 30px 6px 30px; border-top:6px solid {{ yellow }};">
               <a href="{{ site_url }}" target="_blank">
                 {%- if logo_src %}
-                <img src="{{ logo_src }}" width="180" alt="{{ brand }}" style="width:180px; max-width:180px; height:auto;">
+                <img src="{{ logo_src }}" width="170" alt="{{ brand }}" style="width:170px; max-width:170px; height:auto;">
                 {%- else %}
-                <span style="font-family:{{ font }}; font-size:32px; font-weight:800; color:{{ black }}; letter-spacing:4px;">NEST</span>
+                <span style="font-family:{{ font }}; font-size:32px; font-weight:800; color:#FFFFFF; letter-spacing:4px;">NEST</span>
                 {%- endif %}
               </a>
             </td>
@@ -79,8 +104,11 @@
 
           <!-- ===== Hero ===== -->
           <tr>
-            <td class="px" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:40px 40px 42px 40px;">
-              <p style="margin:0 0 14px 0; font-family:{{ font }}; font-size:13px; line-height:18px; font-weight:700; letter-spacing:1.5px; color:{{ yellow }};">
+            <td class="px" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:30px 40px 42px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td height="1" bgcolor="#2A2A2A" style="height:1px; line-height:1px; font-size:1px; background-color:#2A2A2A;">&nbsp;</td></tr>
+              </table>
+              <p style="margin:30px 0 14px 0; font-family:{{ font }}; font-size:13px; line-height:18px; font-weight:700; letter-spacing:1.5px; color:{{ yellow }};">
                 ՇԻՆՀՐԱՊԱՐԱԿԻ ԱՆՎՏԱՆԳՈՒԹՅՈՒՆ
               </p>
               <h1 class="hero-title" style="margin:0 0 16px 0; font-family:{{ font }}; font-size:30px; line-height:38px; font-weight:800; color:#FFFFFF;">
@@ -103,15 +131,15 @@
 
           <!-- ===== Greeting ===== -->
           <tr>
-            <td class="px" style="padding:36px 40px 8px 40px; font-family:{{ font }}; font-size:16px; line-height:26px; color:{{ black }};">
-              <p style="margin:0 0 16px 0;">
+            <td class="px dm-surface" style="padding:36px 40px 8px 40px; font-family:{{ font }}; font-size:16px; line-height:26px;">
+              <p class="dm-text" style="margin:0 0 16px 0; color:{{ black }};">
                 {%- if company_name %}
                 Հարգելի «{{ company_name }}» թիմ,
                 {%- else %}
                 Հարգելի գործընկեր,
                 {%- endif %}
               </p>
-              <p style="margin:0 0 16px 0;">
+              <p class="dm-text" style="margin:0 0 16px 0; color:{{ black }};">
                 Մենք {{ brand }}-ն ենք՝ շինարարական օբյեկտներում անվտանգության համակարգերի տեղադրման մասնագիտացված թիմ։ Կցանկանայինք առաջարկել մեր ծառայությունները ձեր ընթացիկ և ապագա նախագծերի համար։
               </p>
             </td>
@@ -119,8 +147,8 @@
 
           <!-- ===== Services ===== -->
           <tr>
-            <td class="px" style="padding:12px 40px 8px 40px;">
-              <h2 style="margin:0 0 18px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+            <td class="px dm-surface" style="padding:12px 40px 8px 40px;">
+              <h2 class="dm-text" style="margin:0 0 18px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
                 Մեր ծառայությունները
               </h2>
               {%- set services = [
@@ -142,8 +170,8 @@
                     </table>
                   </td>
                   <td valign="top" style="font-family:{{ font }};">
-                    <p style="margin:0 0 4px 0; font-size:17px; line-height:24px; font-weight:700; color:{{ black }};">{{ title }}</p>
-                    <p style="margin:0; font-size:15px; line-height:23px; color:{{ muted }};">{{ text }}</p>
+                    <p class="dm-text" style="margin:0 0 4px 0; font-size:17px; line-height:24px; font-weight:700; color:{{ black }};">{{ title }}</p>
+                    <p class="dm-muted" style="margin:0; font-size:15px; line-height:23px; color:{{ muted }};">{{ text }}</p>
                   </td>
                 </tr>
               </table>
@@ -155,11 +183,11 @@
           {%- set works = portfolio if portfolio else ([{"src": "", "alt": "Լուսանկար 1"}, {"src": "", "alt": "Լուսանկար 2"}, {"src": "", "alt": "Լուսանկար 3"}, {"src": "", "alt": "Լուսանկար 4"}] if show_placeholders else []) %}
           {%- if works %}
           <tr>
-            <td class="px" style="padding:6px 40px 26px 40px;">
-              <h2 style="margin:0 0 6px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+            <td class="px dm-surface" style="padding:16px 40px 20px 40px;">
+              <h2 class="dm-text" style="margin:0 0 6px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
                 Մեր աշխատանքները
               </h2>
-              <p style="margin:0 0 18px 0; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
+              <p class="dm-muted" style="margin:0 0 18px 0; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
                 Իրականացված նախագծերից մի քանիսը։
               </p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -168,11 +196,11 @@
                   {%- for work in row %}
                   <td class="stack stack-gap" width="50%" valign="top" style="width:50%; padding:0 {{ '6px' if loop.first else '0' }} 12px {{ '0' if loop.first else '6px' }};">
                     {%- if work.src %}
-                    <img src="{{ work.src }}" width="254" alt="{{ work.alt }}" style="width:100%; max-width:254px; height:auto; border-radius:4px;">
+                    <img class="work-img" src="{{ work.src }}" width="254" alt="{{ work.alt }}" style="width:100%; max-width:254px; height:auto; border-radius:4px;">
                     {%- else %}
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td align="center" height="190" bgcolor="#E4E4E0" style="height:190px; background-color:#E4E4E0; border:2px dashed #BDBDB6; font-family:{{ font }}; font-size:14px; color:#8A8A84;">
+                        <td class="dm-ph" align="center" height="190" bgcolor="#E4E4E0" style="height:190px; background-color:#E4E4E0; border:2px dashed #BDBDB6; font-family:{{ font }}; font-size:14px; color:#8A8A84;">
                           {{ work.alt }}
                         </td>
                       </tr>
@@ -190,11 +218,11 @@
 
           <!-- ===== Why us ===== -->
           <tr>
-            <td class="px" style="padding:20px 40px 30px 40px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }}; border-left:4px solid {{ yellow }};">
+            <td class="px dm-surface" style="padding:16px 40px 30px 40px;">
+              <table role="presentation" class="dm-panel" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }}; border-left:4px solid {{ yellow }};">
                 <tr>
-                  <td style="padding:24px 24px 10px 24px;">
-                    <h2 style="margin:0 0 16px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+                  <td class="dm-panel" style="padding:24px 24px 10px 24px;">
+                    <h2 class="dm-text" style="margin:0 0 16px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
                       Ինչո՞ւ ընտրել մեզ
                     </h2>
                     {%- set reasons = [
@@ -208,8 +236,8 @@
                       <tr>
                         <td width="26" valign="top" style="width:26px; font-family:{{ font }}; font-size:17px; line-height:24px; font-weight:800; color:{{ yellow }};">✓</td>
                         <td valign="top" style="font-family:{{ font }};">
-                          <p style="margin:0 0 2px 0; font-size:16px; line-height:23px; font-weight:700; color:{{ black }};">{{ title }}</p>
-                          <p style="margin:0; font-size:15px; line-height:23px; color:{{ muted }};">{{ text }}</p>
+                          <p class="dm-text" style="margin:0 0 2px 0; font-size:16px; line-height:23px; font-weight:700; color:{{ black }};">{{ title }}</p>
+                          <p class="dm-muted" style="margin:0; font-size:15px; line-height:23px; color:{{ muted }};">{{ text }}</p>
                         </td>
                       </tr>
                     </table>
@@ -220,41 +248,45 @@
             </td>
           </tr>
 
-          <!-- ===== Clients ===== -->
+          <!-- ===== Clients (white cards are baked into the logo images) ===== -->
           {%- if clients %}
           <tr>
-            <td class="px" style="padding:6px 40px 30px 40px;">
-              <h2 style="margin:0 0 6px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+            <td class="px dm-surface" style="padding:6px 40px 34px 40px;">
+              <h2 class="dm-text" style="margin:0 0 6px 0; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
                 Մեզ վստահում են
               </h2>
-              <p style="margin:0 0 16px 0; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
+              <p class="dm-muted" style="margin:0 0 16px 0; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
                 Մեր հաճախորդները՝ Հայաստանի առաջատար կառուցապատողներ և շինարարական ընկերություններ։
               </p>
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #E6E6E2; border-left:1px solid #E6E6E2;">
-                {%- for row in clients | batch(5) %}
+              <table role="presentation" class="dm-panel" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }}; border-radius:6px;">
                 <tr>
-                  {%- for client in row %}
-                  <td class="client-cell" align="center" valign="middle" width="20%" height="72" style="width:20%; height:72px; padding:10px 8px; border-right:1px solid #E6E6E2; border-bottom:1px solid #E6E6E2;">
-                    <img class="client-img" src="{{ client.src }}" alt="{{ client.alt }}" style="max-width:88px; max-height:40px; width:auto; height:auto; display:inline-block;">
+                  {#- Inline-block cards, 2 per line (cards are 540x200 images shown at 250px).
+                      Outlook for Windows ignores inline-block, so it gets a plain 2-column table. #}
+                  <td class="dm-panel" align="center" style="padding:6px 0; font-size:0; line-height:0; text-align:center;">
+                    <!--[if mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><![endif]-->
+                    {%- for client in clients %}
+                    {%- if loop.index0 and loop.index0 % 2 == 0 %}<!--[if mso]></tr><tr><![endif]-->{% endif %}
+                    <!--[if mso]><td style="padding:5px;"><![endif]-->
+                    <div class="client-cell" style="display:inline-block; width:250px; padding:5px; vertical-align:top;">
+                      <img class="client-img" src="{{ client.src }}" width="250" alt="{{ client.alt }}" style="width:250px; max-width:100%; height:auto; display:block;">
+                    </div>
+                    <!--[if mso]></td><![endif]-->
+                    {%- endfor %}
+                    <!--[if mso]></tr></table><![endif]-->
                   </td>
-                  {%- endfor %}
-                  {%- for _ in range(5 - row | length) %}
-                  <td class="client-cell" width="20%" style="width:20%; border-right:1px solid #E6E6E2; border-bottom:1px solid #E6E6E2;"></td>
-                  {%- endfor %}
                 </tr>
-                {%- endfor %}
               </table>
             </td>
           </tr>
           {%- endif %}
 
-          <!-- ===== Call to action ===== -->
+          <!-- ===== Call to action (black in every mode) ===== -->
           <tr>
-            <td class="px" bgcolor="{{ yellow }}" style="background-color:{{ yellow }}; padding:34px 40px;">
-              <h2 style="margin:0 0 10px 0; font-family:{{ font }}; font-size:23px; line-height:30px; font-weight:800; color:{{ black }};">
+            <td class="px" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:36px 40px 32px 40px; border-top:4px solid {{ yellow }};">
+              <h2 style="margin:0 0 10px 0; font-family:{{ font }}; font-size:23px; line-height:30px; font-weight:800; color:#FFFFFF;">
                 Քննարկենք ձեր նախագիծը
               </h2>
-              <p style="margin:0 0 22px 0; font-family:{{ font }}; font-size:16px; line-height:25px; color:{{ black }};">
+              <p style="margin:0 0 24px 0; font-family:{{ font }}; font-size:16px; line-height:25px; color:#D6D6D6;">
                 Զանգահարեք կամ պարզապես պատասխանեք այս նամակին. կպատրաստենք առաջարկ՝ հաշվի առնելով ձեր օբյեկտի առանձնահատկությունները։
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0" border="0">
@@ -262,8 +294,8 @@
                   <td class="stack stack-gap" style="padding:0 10px 0 0;">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                       <tr>
-                        <td class="btn" bgcolor="{{ black }}" style="background-color:{{ black }}; border-radius:4px;">
-                          <a href="tel:{{ phone_link }}" target="_blank" style="display:inline-block; padding:13px 24px; font-family:{{ font }}; font-size:15px; font-weight:700; color:#FFFFFF; text-decoration:none;">
+                        <td class="btn" bgcolor="{{ yellow }}" style="background-color:{{ yellow }}; border-radius:4px;">
+                          <a href="tel:{{ phone_link }}" target="_blank" style="display:inline-block; padding:13px 24px; font-family:{{ font }}; font-size:15px; font-weight:700; color:{{ black }}; text-decoration:none;">
                             {{ phone_text }}
                           </a>
                         </td>
@@ -273,8 +305,8 @@
                   <td class="stack">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                       <tr>
-                        <td class="btn" style="border:2px solid {{ black }}; border-radius:4px;">
-                          <a href="{{ site_url }}" target="_blank" style="display:inline-block; padding:11px 22px; font-family:{{ font }}; font-size:15px; font-weight:700; color:{{ black }}; text-decoration:none;">
+                        <td class="btn" style="border:2px solid {{ yellow }}; border-radius:4px;">
+                          <a href="{{ site_url }}" target="_blank" style="display:inline-block; padding:11px 22px; font-family:{{ font }}; font-size:15px; font-weight:700; color:{{ yellow }}; text-decoration:none;">
                             Այցելել {{ site_text }}
                           </a>
                         </td>
@@ -288,9 +320,12 @@
 
           <!-- ===== Footer ===== -->
           <tr>
-            <td class="px" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:28px 40px; font-family:{{ font }};">
-              <p style="margin:0 0 6px 0; font-size:16px; line-height:22px; font-weight:800; color:#FFFFFF;">{{ brand }}</p>
-              <p style="margin:0 0 16px 0; font-size:14px; line-height:21px; color:#A9A9A9;">
+            <td class="px" bgcolor="{{ black }}" style="background-color:{{ black }}; padding:0 40px 30px 40px; font-family:{{ font }};">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td height="1" bgcolor="#2A2A2A" style="height:1px; line-height:1px; font-size:1px; background-color:#2A2A2A;">&nbsp;</td></tr>
+              </table>
+              <p style="margin:24px 0 6px 0; font-size:16px; line-height:22px; font-weight:800; color:#FFFFFF;">{{ brand }}</p>
+              <p style="margin:0 0 14px 0; font-size:14px; line-height:21px; color:#A9A9A9;">
                 Անվտանգության և փոշեպաշտպան ցանցեր
               </p>
               <p style="margin:0; font-size:14px; line-height:24px; color:#FFFFFF;">
@@ -306,11 +341,11 @@
         <!-- ===== Unsubscribe ===== -->
         <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
           <tr>
-            <td class="px" align="center" style="padding:18px 40px 6px 40px; font-family:{{ font }}; font-size:12px; line-height:18px; color:#8A8A84;">
+            <td class="px dm-foot" align="center" style="padding:18px 40px 6px 40px; font-family:{{ font }}; font-size:12px; line-height:18px; color:#8A8A84;">
               Այս նամակն ուղարկվել է, քանի որ ձեր ընկերությունը ներկայացված է շինարարական ընկերությունների հրապարակային ցուցակներում։
               Եթե այլևս չեք ցանկանում ստանալ մեր նամակները,
               {%- if unsubscribe_url %}
-              <a href="{{ unsubscribe_url }}" target="_blank" style="color:#8A8A84; text-decoration:underline;">սեղմեք այստեղ</a> կամ
+              <a class="dm-foot" href="{{ unsubscribe_url }}" target="_blank" style="color:#8A8A84; text-decoration:underline;">սեղմեք այստեղ</a> կամ
               {%- endif %}
               պատասխանեք «Չուղարկել» բառով։
             </td>
