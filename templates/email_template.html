@@ -3,8 +3,8 @@
 
   Variables (filled in by main.py):
     company_name     short company name, e.g. MACON (may be empty)
-    logo_src         NEST logo on a white card, for the black header
-    clients          [{src, alt}]  client logos on white cards (templates/assets/clients/)
+    logo_src         NEST logo with white lettering (transparent), for the black header
+    clients          [{src, alt}]  client logos on black cards (templates/assets/clients/)
     portfolio        [{src, alt}]  project photos             (templates/assets/portfolio/)
     show_placeholders  true in --preview when there are no portfolio photos yet
     website_url      tracked website link (empty until TRACK_BASE_URL is set)
@@ -56,6 +56,7 @@
       .btn { display: block !important; text-align: center !important; }
       .work-img { max-width: 100% !important; }
       .client-px { padding-left: 12px !important; padding-right: 12px !important; }
+      .client-head { margin-left: 8px !important; margin-right: 8px !important; }
       .client-cell { width: 47% !important; padding: 4px 1.5% !important; }
       .client-img { width: 100% !important; max-width: 100% !important; height: auto !important; }
     }
@@ -249,27 +250,27 @@
             </td>
           </tr>
 
-          <!-- ===== Clients (white cards are baked into the logo images) ===== -->
+          <!-- ===== Clients: full email width, about 600x350 (black cards are part of the images) ===== -->
           {%- if clients %}
           <tr>
-            <td class="px client-px dm-surface" style="padding:6px 24px 34px 24px;">
-              <h2 class="dm-text" style="margin:0 0 6px 16px; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
+            <td class="px client-px dm-surface" style="padding:6px 10px 30px 10px;">
+              <h2 class="dm-text client-head" style="margin:0 0 6px 30px; font-family:{{ font }}; font-size:21px; line-height:28px; font-weight:800; color:{{ black }};">
                 Մեզ վստահում են
               </h2>
-              <p class="dm-muted" style="margin:0 16px 16px 16px; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
+              <p class="dm-muted client-head" style="margin:0 30px 16px 30px; font-family:{{ font }}; font-size:15px; line-height:23px; color:{{ muted }};">
                 Մեր հաճախորդները՝ Հայաստանի առաջատար կառուցապատողներ և շինարարական ընկերություններ։
               </p>
               <table role="presentation" class="dm-panel" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ gray }}" style="background-color:{{ gray }}; border-radius:6px;">
                 <tr>
-                  {#- Inline-block cards (540x200 images): 5 per line on desktop, 2 on phones.
+                  {#- Inline-block cards (216x224 images shown at 106px): 5 per line on desktop, 2 on phones.
                       Outlook for Windows ignores inline-block, so it gets a plain 5-column table. #}
-                  <td class="dm-panel" align="center" style="padding:6px 0; font-size:0; line-height:0; text-align:center;">
+                  <td class="dm-panel" align="center" style="padding:5px 0; font-size:0; line-height:0; text-align:center;">
                     <!--[if mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><![endif]-->
                     {%- for client in clients %}
                     {%- if loop.index0 and loop.index0 % 5 == 0 %}<!--[if mso]></tr><tr><![endif]-->{% endif %}
                     <!--[if mso]><td style="padding:3px;"><![endif]-->
-                    <div class="client-cell" style="display:inline-block; width:104px; padding:3px; vertical-align:top;">
-                      <img class="client-img" src="{{ client.src }}" width="104" alt="{{ client.alt }}" style="width:104px; max-width:100%; height:auto; display:block;">
+                    <div class="client-cell" style="display:inline-block; width:106px; padding:3px; vertical-align:top;">
+                      <img class="client-img" src="{{ client.src }}" width="106" alt="{{ client.alt }}" style="width:106px; max-width:100%; height:auto; display:block;">
                     </div>
                     <!--[if mso]></td><![endif]-->
                     {%- endfor %}

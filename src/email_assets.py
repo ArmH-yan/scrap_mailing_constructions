@@ -3,7 +3,7 @@ Lead Generation — Email images
 Logo, client logos and portfolio photos, resized and converted for email.
 
 Drop files into these folders; they are resized automatically on send:
-    templates/assets/logo-black.png  logo (black lettering), shown on a white card in the black header
+    templates/assets/logo.png     logo with white lettering, transparent, for the black header
     templates/assets/clients/     client logos   (png, jpg, webp)
     templates/assets/portfolio/   project photos (png, jpg, webp)
 
@@ -27,17 +27,19 @@ ASSETS_DIR = Path(os.getenv("EMAIL_ASSETS_DIR", BASE_DIR / "templates" / "assets
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 # Pixel sizes are ~2x the displayed size so images stay sharp on phones
-LOGO_CARD = (440, 220)      # shown at 220x110: white rounded card with the logo centered
-LOGO_PADDING = (44, 26)
-CLIENT_TILE = (540, 200)    # white rounded card with the logo centered (5 per row, 2 on phones)
-CLIENT_PADDING = (48, 30)
-CARD_RADIUS = 28
+LOGO_WIDTH = 400            # shown at 200px
+CLIENT_TILE = (216, 224)    # shown at 106x110, 5 per row (2 on phones): black rounded card
+CLIENT_PADDING = (20, 28)
+CARD_RADIUS = 20
+CARD_FILL = (17, 17, 17, 255)
+CARD_OUTLINE = (58, 58, 58, 255)
+LIGHTEN_BELOW = 95          # on black cards, logo pixels darker than this (luminance) turn white
 PORTFOLIO_SIZE = (560, 420) # shown at 264x198, cropped to 4:3
 MAX_PORTFOLIO = 6
 
 # Mail apps in dark mode recolor the email's backgrounds and text but never its images.
-# So anything that must stay readable on a dark background is baked into the image:
-# the NEST logo and the client logos each sit on a white card that is part of the image.
+# So the client logos sit on black cards that are part of the image, and their dark
+# lettering is turned white so it reads on black in every mode.
 
 
 @dataclass
@@ -79,28 +81,49 @@ def _image_files(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.suffix.lower() in IMAGE_EXTS)
 
 
+def _lighten_dark_parts(im: Image.Image) -> Image.Image:
+    """Turn dark pixels white (keeps alpha and bright/colored parts), for logos on black.
+
+    Only for logos with a transparent background: a logo with its own solid background
+    (e.g. a dark square with light text) is already readable and is left alone.
+    """
+    alpha = im.getchannel("A")
+    if alpha.getextrema()[0] == 255:            # fully opaque: has its own background
+        return im
+    px = im.load()
+    for y in range(im.height):
+        for x in range(im.width):
+            r, g, b, a = px[x, y]
+            if a and 0.299 * r + 0.587 * g + 0.114 * b < LIGHTEN_BELOW:
+                px[x, y] = (255, 255, 255, a)
+    return im
+
+
 def _card(path: Path, size: tuple, padding: tuple) -> bytes:
-    """The image at path, fitted inside padding and centered on a white rounded card."""
+    """The image at path, fitted inside padding and centered on a black rounded card."""
     w, h = size
     logo = Image.open(path).convert("RGBA")
     logo.thumbnail((w - 2 * padding[0], h - 2 * padding[1]), Image.LANCZOS)
+    logo = _lighten_dark_parts(logo)
     card = Image.new("RGBA", size, (0, 0, 0, 0))
     ImageDraw.Draw(card).rounded_rectangle(
-        (0, 0, w - 1, h - 1), CARD_RADIUS, fill=(255, 255, 255, 255), outline=(226, 226, 222, 255))
+        (0, 0, w - 1, h - 1), CARD_RADIUS, fill=CARD_FILL, outline=CARD_OUTLINE)
     card.alpha_composite(logo, ((w - logo.width) // 2, (h - logo.height) // 2))
     return _png(card)
 
 
 def _logo() -> EmailImage | None:
-    """NEST logo (black lettering) on a white card, for the black header."""
-    path = ASSETS_DIR / "logo-black.png"
+    """NEST logo with white lettering (transparent background), for the black header."""
+    path = ASSETS_DIR / "logo.png"
     if not path.exists():
         return None
-    return EmailImage("logo", _card(path, LOGO_CARD, LOGO_PADDING), "png", "NEST")
+    im = Image.open(path).convert("RGBA")
+    im.thumbnail((LOGO_WIDTH, LOGO_WIDTH), Image.LANCZOS)
+    return EmailImage("logo", _png(im), "png", "NEST")
 
 
 def _client(path: Path, index: int) -> EmailImage:
-    """Client logo on a white card, readable on light and dark backgrounds."""
+    """Client logo on a black card, readable on light and dark backgrounds."""
     return EmailImage(f"client{index}", _card(path, CLIENT_TILE, CLIENT_PADDING), "png",
                       _alt_from_filename(path))
 

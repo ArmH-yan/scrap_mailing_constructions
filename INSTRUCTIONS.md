@@ -275,8 +275,8 @@ template (`{% set brand = ... %}`, `phone_link`, `site_text`, `yellow`…). Serv
 
 | Folder | Used for | Notes |
 |--------|----------|-------|
-| `templates/assets/logo-black.png` | Header logo | Black lettering; placed on a white rounded card in the black header (same in light and dark mode) |
-| `templates/assets/clients/` | "Մեզ վստահում են" logo grid | 5 per row (2 per row on phones), file name order; each logo is placed on a white rounded card |
+| `templates/assets/logo.png` | Header logo | White lettering, transparent background; shown directly on the black header |
+| `templates/assets/clients/` | "Մեզ վստահում են" logo grid | 5 per row (2 per row on phones), file name order; each logo is placed on a black rounded card, and dark lettering on transparent logos is turned white |
 | `templates/assets/portfolio/` | "Մեր աշխատանքները" photos | Up to 6, cropped to 4:3, file name order (`01-…`, `02-…`) |
 
 Images are attached to each email inline (`cid:`), so nothing needs to be hosted.
