@@ -275,7 +275,7 @@ template (`{% set brand = ... %}`, `phone_link`, `site_text`, `yellow`…). Serv
 
 | Folder | Used for | Notes |
 |--------|----------|-------|
-| `templates/assets/logo.png` | Header logo | The dark-mode logo (white lettering, transparent background); the header is black in every mode |
+| `templates/assets/logo-black.png` | Header logo | Black lettering; placed on a white rounded card in the black header (same in light and dark mode) |
 | `templates/assets/clients/` | "Մեզ վստահում են" logo grid | 5 per row (2 per row on phones), file name order; each logo is placed on a white rounded card |
 | `templates/assets/portfolio/` | "Մեր աշխատանքները" photos | Up to 6, cropped to 4:3, file name order (`01-…`, `02-…`) |
 

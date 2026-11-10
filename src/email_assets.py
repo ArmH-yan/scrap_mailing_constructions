@@ -3,7 +3,7 @@ Lead Generation — Email images
 Logo, client logos and portfolio photos, resized and converted for email.
 
 Drop files into these folders; they are resized automatically on send:
-    templates/assets/logo.png     dark-mode logo (white lettering) for the black header
+    templates/assets/logo-black.png  logo (black lettering), shown on a white card in the black header
     templates/assets/clients/     client logos   (png, jpg, webp)
     templates/assets/portfolio/   project photos (png, jpg, webp)
 
@@ -27,17 +27,17 @@ ASSETS_DIR = Path(os.getenv("EMAIL_ASSETS_DIR", BASE_DIR / "templates" / "assets
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 # Pixel sizes are ~2x the displayed size so images stay sharp on phones
-LOGO_WIDTH = 340            # shown at 170px
-CLIENT_TILE = (540, 200)    # shown at 250x93, 2 per row: white rounded card, logo centered
+LOGO_CARD = (440, 220)      # shown at 220x110: white rounded card with the logo centered
+LOGO_PADDING = (44, 26)
+CLIENT_TILE = (540, 200)    # white rounded card with the logo centered (5 per row, 2 on phones)
 CLIENT_PADDING = (48, 30)
-CLIENT_RADIUS = 28
+CARD_RADIUS = 28
 PORTFOLIO_SIZE = (560, 420) # shown at 264x198, cropped to 4:3
 MAX_PORTFOLIO = 6
 
 # Mail apps in dark mode recolor the email's backgrounds and text but never its images.
 # So anything that must stay readable on a dark background is baked into the image:
-# the logo is the dark-mode version (white lettering, on the black header), client logos
-# get a white card.
+# the NEST logo and the client logos each sit on a white card that is part of the image.
 
 
 @dataclass
@@ -79,26 +79,30 @@ def _image_files(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.suffix.lower() in IMAGE_EXTS)
 
 
+def _card(path: Path, size: tuple, padding: tuple) -> bytes:
+    """The image at path, fitted inside padding and centered on a white rounded card."""
+    w, h = size
+    logo = Image.open(path).convert("RGBA")
+    logo.thumbnail((w - 2 * padding[0], h - 2 * padding[1]), Image.LANCZOS)
+    card = Image.new("RGBA", size, (0, 0, 0, 0))
+    ImageDraw.Draw(card).rounded_rectangle(
+        (0, 0, w - 1, h - 1), CARD_RADIUS, fill=(255, 255, 255, 255), outline=(226, 226, 222, 255))
+    card.alpha_composite(logo, ((w - logo.width) // 2, (h - logo.height) // 2))
+    return _png(card)
+
+
 def _logo() -> EmailImage | None:
-    """Logo for the black header (the dark-mode version: white lettering, yellow net)."""
-    path = ASSETS_DIR / "logo.png"
+    """NEST logo (black lettering) on a white card, for the black header."""
+    path = ASSETS_DIR / "logo-black.png"
     if not path.exists():
         return None
-    im = Image.open(path).convert("RGBA")
-    im.thumbnail((LOGO_WIDTH, LOGO_WIDTH), Image.LANCZOS)
-    return EmailImage("logo", _png(im), "png", "NEST")
+    return EmailImage("logo", _card(path, LOGO_CARD, LOGO_PADDING), "png", "NEST")
 
 
 def _client(path: Path, index: int) -> EmailImage:
-    """Client logo centered on a white rounded card, readable on light and dark backgrounds."""
-    w, h = CLIENT_TILE
-    logo = Image.open(path).convert("RGBA")
-    logo.thumbnail((w - 2 * CLIENT_PADDING[0], h - 2 * CLIENT_PADDING[1]), Image.LANCZOS)
-    tile = Image.new("RGBA", CLIENT_TILE, (0, 0, 0, 0))
-    ImageDraw.Draw(tile).rounded_rectangle(
-        (0, 0, w - 1, h - 1), CLIENT_RADIUS, fill=(255, 255, 255, 255), outline=(226, 226, 222, 255))
-    tile.alpha_composite(logo, ((w - logo.width) // 2, (h - logo.height) // 2))
-    return EmailImage(f"client{index}", _png(tile), "png", _alt_from_filename(path))
+    """Client logo on a white card, readable on light and dark backgrounds."""
+    return EmailImage(f"client{index}", _card(path, CLIENT_TILE, CLIENT_PADDING), "png",
+                      _alt_from_filename(path))
 
 
 def _portfolio(path: Path, index: int) -> EmailImage:
